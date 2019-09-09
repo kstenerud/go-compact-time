@@ -2,6 +2,7 @@ package compact_date
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kstenerud/go-vlq"
@@ -10,6 +11,7 @@ import (
 const yearBias = 2000
 const bitsPerYearGroup = 7
 
+const sizeUtc = 1
 const sizeMagnitude = 2
 const sizeSubsecond = 10
 const sizeSecond = 6
@@ -17,16 +19,59 @@ const sizeMinute = 6
 const sizeHour = 5
 const sizeDay = 5
 const sizeMonth = 4
+const sizeLatitude = 14
+const sizeLongitude = 15
+const sizeDateYearUpperBits = 7
 
+const baseSizeTime = sizeUtc + sizeMagnitude + sizeSecond + sizeMinute + sizeHour
+const baseSizeTimestamp = sizeMagnitude + sizeSecond + sizeMinute + sizeHour + sizeDay + sizeMonth
+
+const byteCountDate = 2
+
+const maskMagnitude = ((1 << sizeMagnitude) - 1)
 const maskSecond = ((1 << sizeSecond) - 1)
 const maskMinute = ((1 << sizeMinute) - 1)
 const maskHour = ((1 << sizeHour) - 1)
 const maskDay = ((1 << sizeDay) - 1)
 const maskMonth = ((1 << sizeMonth) - 1)
+const maskLatitude = ((1 << sizeLatitude) - 1)
+const maskLongitude = ((1 << sizeLongitude) - 1)
+const maskDateYearUpperBits = ((1 << sizeDateYearUpperBits) - 1)
 
-var baseSizes = [...]int{4, 5, 6, 8}
-var yearHighBits = [...]int{4, 2, 0, 6}
+var timestampYearUpperBits = [...]int{4, 2, 0, 6}
 var subsecMultipliers = [...]int{1, 1000000, 1000, 1}
+
+var abbrevToTimezone = map[rune]string{
+	'F': "Africa",
+	'M': "America",
+	'N': "Antarctica",
+	'R': "Arctic",
+	'S': "Asia",
+	'T': "Atlantic",
+	'U': "Australia",
+	'C': "Etc",
+	'E': "Europe",
+	'I': "Indian",
+	'P': "Pacific",
+	'Z': "Etc/UTC",
+	'L': "Local",
+}
+
+var timezoneToAbbrev = map[string]string{
+	"Africa":     "F",
+	"America":    "M",
+	"Antarctica": "N",
+	"Arctic":     "R",
+	"Asia":       "S",
+	"Atlantic":   "T",
+	"Australia":  "U",
+	"Etc":        "C",
+	"Europe":     "E",
+	"Indian":     "I",
+	"Pacific":    "P",
+	"Etc/UTC":    "Z",
+	"Local":      "L",
+}
 
 func getSubsecondMagnitude(time time.Time) int {
 	if time.Nanosecond() == 0 {
@@ -53,158 +98,268 @@ func encodeYear(year int) uint32 {
 	return zigzagEncode(int32(year) - yearBias)
 }
 
+func encodeYearAndUtcFlag(thetime time.Time) uint32 {
+	utcflag := uint32(0)
+	if thetime.Location() == time.UTC {
+		utcflag = 1
+	}
+	return (encodeYear(thetime.Year()) << 1) | utcflag
+}
+
 func decodeYear(encodedYear uint32) int {
 	return int(zigzagDecode(uint32(encodedYear))) + yearBias
 }
 
-func getBaseByteCount(magnitude int) int {
-	return (sizeMagnitude + sizeSubsecond*magnitude + sizeSecond + sizeMinute + sizeHour + sizeDay + sizeMonth + yearHighBits[magnitude]) / 8
+func getBaseByteCount(baseSize int, magnitude int) int {
+	size := baseSize + sizeSubsecond*magnitude
+	remainder := int8(size & 7)
+	extraByte := ((remainder | (-remainder)) >> 7) & 1
+	return size/8 + int(extraByte)
 }
 
-func getYearGroupCount(encodedYear uint32, subsecondMagnitude int) int {
-	extraBitCount := yearHighBits[subsecondMagnitude]
-	year := encodedYear >> bitsPerYearGroup
+func getYearGroupCount(encodedYear uint32, uncountedBits int) int {
+	year := encodedYear >> uint32(uncountedBits)
 	if year == 0 {
 		return 1
 	}
 
-	size := 1
+	size := 0
 	for year != 0 {
 		size++
 		year >>= bitsPerYearGroup
 	}
+	return size
+}
 
-	extraMask := (uint32(1) << uint(extraBitCount)) - 1
-	lastGroupBits := encodedYear >> uint(bitsPerYearGroup*(size-1))
-	if lastGroupBits & ^extraMask != 0 {
-		return size
+func writeLocationString(location string, dst []byte) (bytesEncoded int, err error) {
+	location = getAbbreviatedTimezoneString(location)
+	byteCount := len(location) + 1
+	if len(dst) < byteCount {
+		return 0, fmt.Errorf("Require %v bytes to store location [%v], but only %v bytes available", byteCount, location, len(dst))
 	}
-	return size - 1
+	dst[0] = byte(len(location) << 1)
+	copy(dst[1:], location)
+	return byteCount, nil
+}
+
+func encodeTimezone(location *time.Location, dst []byte) (bytesEncoded int, err error) {
+	// TODO: lat-long support?
+	switch location {
+	case time.UTC:
+		return 0, nil
+	case time.Local:
+		return writeLocationString("L", dst)
+	default:
+		_, err := time.LoadLocation(location.String())
+		if err != nil {
+			return 0, fmt.Errorf("%v is not an IANA time zone, or time zone database not found", location)
+		}
+		return writeLocationString(location.String(), dst)
+	}
+}
+
+func getFullTimezoneString(tz string) string {
+	if len(tz) == 0 {
+		return tz
+	}
+	firstChar := rune(tz[0])
+
+	if len(tz) == 1 {
+		switch firstChar {
+		case 'l':
+			return "Local"
+		case 'z':
+			return "Etc/UTC"
+		}
+		return tz
+	}
+	if tz[1] != '/' {
+		return tz
+	}
+
+	remainder := tz[1:]
+	if val, ok := abbrevToTimezone[firstChar]; ok {
+		return val + remainder
+	}
+	return tz
+}
+
+func getAbbreviatedTimezoneString(tz string) string {
+	if len(tz) == 0 {
+		return "Z"
+	}
+
+	if tz == "Local" {
+		return "L"
+	}
+
+	index := strings.Index(tz, "/")
+	if index < 1 {
+		return tz
+	}
+
+	area := tz[:index]
+
+	if value, ok := timezoneToAbbrev[area]; ok {
+		return value + tz[index:]
+	}
+
+	return tz
+}
+
+func decodeTimezone(src []byte, timezoneIsUtc bool) (location *time.Location, bytesDecoded int, err error) {
+	if timezoneIsUtc {
+		return time.UTC, 0, nil
+	}
+
+	if len(src) < 1 {
+		return nil, 0, fmt.Errorf("Require %v bytes to read location, but only %v bytes available", 1, len(src))
+	}
+
+	isLatlong := src[0] & 1
+	if isLatlong == 1 {
+		return nil, 0, fmt.Errorf("TODO: latlong not supported")
+	}
+
+	offset := 0
+	length := int(src[offset] >> 1)
+	offset++
+	if offset+length > len(src) {
+		return nil, 0, fmt.Errorf("Require %v bytes to read location, but only %v bytes available", length, len(src))
+	}
+	name := string(src[offset : offset+length])
+	offset += length
+	location, err = time.LoadLocation(getFullTimezoneString(name))
+	if err != nil {
+		return nil, 0, err
+	}
+	return location, offset, nil
+}
+
+func timezoneEncodedSize(location *time.Location) int {
+	// TODO: lat-long support?
+	if location == time.UTC {
+		return 0
+	}
+	if location == time.Local {
+		return 2 // length 1 + "L"
+	}
+	return 1 + len(getAbbreviatedTimezoneString(location.String()))
 }
 
 func EncodedSize(time time.Time) int {
 	magnitude := getSubsecondMagnitude(time)
-	baseByteCount := getBaseByteCount(magnitude)
+	baseByteCount := getBaseByteCount(baseSizeTimestamp, magnitude)
 	encodedYear := encodeYear(time.Year())
-	yearGroupCount := getYearGroupCount(encodedYear, magnitude)
+	yearGroupCount := getYearGroupCount(encodedYear<<1, timestampYearUpperBits[magnitude])
 
-	return baseByteCount + yearGroupCount
+	return baseByteCount + yearGroupCount + timezoneEncodedSize(time.Location())
 }
 
-func Encode(time time.Time, dst []byte) (bytesEncoded int, err error) {
-	magnitude := getSubsecondMagnitude(time)
-	baseByteCount := getBaseByteCount(magnitude)
-	encodedYear := encodeYear(time.Year())
-	yearGroupCount := getYearGroupCount(encodedYear, magnitude)
-
-	if baseByteCount+yearGroupCount > len(dst) {
-		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", baseByteCount+yearGroupCount, time, len(dst))
+func encodeLE(value uint64, dst []byte, byteCount int) {
+	for i := 0; i < byteCount; i++ {
+		dst[i] = uint8(value)
+		value >>= 8
 	}
+}
 
-	subsecond := time.Nanosecond() / subsecMultipliers[magnitude]
+func decodeLE(src []byte, byteCount int) uint64 {
+	accumulator := uint64(0)
+	for i := 0; i < byteCount; i++ {
+		accumulator |= uint64(src[i]) << (uint(i) * 8)
+	}
+	return accumulator
+}
+
+func EncodeTimestamp(time time.Time, dst []byte) (bytesEncoded int, err error) {
+	magnitude := getSubsecondMagnitude(time)
+	encodedYear := encodeYearAndUtcFlag(time)
+	yearGroupCount := getYearGroupCount(encodedYear, timestampYearUpperBits[magnitude])
 	yearGroupBitCount := yearGroupCount * bitsPerYearGroup
-	yearGroupedMask := (1 << uint(yearGroupBitCount)) - 1
-	// KSLOG_TRACE("subs %d, year group bits %d, year mask %x", subsecond, yearGroupBitCount, yearGroupedMask);
+	yearGroupedMask := uint32(1<<uint(yearGroupBitCount) - 1)
+	subsecond := time.Nanosecond() / subsecMultipliers[magnitude]
 
-	// int b = 0;
-	// KSLOG_TRACE("y: %016lx %02d %d", (uint64_t)(encodedYear >> yearGroupBitCount) << b, b, encodedYear >> yearGroupBitCount); b += yearHighBits[magnitude];
-	// KSLOG_TRACE("M: %016lx %02d %d", (uint64_t)date->month << b, b, date->month); b += SIZE_MONTH;
-	// KSLOG_TRACE("d: %016lx %02d %d", (uint64_t)date->day << b, b, date->day); b += SIZE_DAY;
-	// KSLOG_TRACE("h: %016lx %02d %d", (uint64_t)date->hour << b, b, date->hour); b += SIZE_HOUR;
-	// KSLOG_TRACE("m: %016lx %02d %d", (uint64_t)date->minute << b, b, date->minute); b += SIZE_MINUTE;
-	// KSLOG_TRACE("s: %016lx %02d %d", (uint64_t)date->second << b, b, date->second); b += SIZE_SECOND;
-	// KSLOG_TRACE("S: %016lx %02d %d", (uint64_t)subsecond << b, b, subsecond); b += SIZE_SUBSECOND * magnitude;
-	// KSLOG_TRACE("a: %016lx %02d %d", (uint64_t)magnitude << b, b, magnitude);
-
-	accumulator := uint64(magnitude)
+	accumulator := uint64(encodedYear) >> uint(yearGroupBitCount)
 	accumulator = (accumulator << uint(sizeSubsecond*magnitude)) + uint64(subsecond)
-	accumulator = (accumulator << uint(sizeSecond)) + uint64(time.Second())
-	accumulator = (accumulator << uint(sizeMinute)) + uint64(time.Minute())
-	accumulator = (accumulator << uint(sizeHour)) + uint64(time.Hour())
-	accumulator = (accumulator << uint(sizeDay)) + uint64(time.Day())
 	accumulator = (accumulator << uint(sizeMonth)) + uint64(time.Month())
-	accumulator = (accumulator << uint(yearHighBits[magnitude])) + uint64(encodedYear>>uint(yearGroupBitCount))
-
-	// KSLOG_DEBUG("Accumulator: %016lx", (uint64_t)accumulator);
-
-	encodedYear &= uint32(yearGroupedMask)
+	accumulator = (accumulator << uint(sizeDay)) + uint64(time.Day())
+	accumulator = (accumulator << uint(sizeHour)) + uint64(time.Hour())
+	accumulator = (accumulator << uint(sizeMinute)) + uint64(time.Minute())
+	accumulator = (accumulator << uint(sizeSecond)) + uint64(time.Second())
+	accumulator = (accumulator << uint(sizeMagnitude)) + uint64(magnitude)
 
 	offset := 0
-	for i := baseByteCount - 1; i >= 0; i-- {
-		//     KSLOG_TRACE("Write %02x", (uint8_t)(accumulator >> (8*i)));
-		dst[offset] = uint8(accumulator >> uint(8*i))
-		offset++
+	accumulatorSize := getBaseByteCount(baseSizeTimestamp, magnitude)
+	if accumulatorSize > len(dst) {
+		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", accumulatorSize, time, len(dst))
 	}
+	encodeLE(accumulator, dst[offset:], accumulatorSize)
+	offset += accumulatorSize
 
-	// KSLOG_TRACE("encoded year %d (%02x)", encodedYear, encodedYear);
-	bytesEncoded, err = vlq.Rvlq(encodedYear).EncodeTo(dst[offset:])
+	bytesEncoded, err = vlq.Rvlq(encodedYear & yearGroupedMask).EncodeTo(dst[offset:])
 	if err != nil {
 		return 0, err
 	}
-	return bytesEncoded + offset, nil
+	offset += bytesEncoded
+
+	bytesEncoded, err = encodeTimezone(time.Location(), dst[offset:])
+	if err != nil {
+		return 0, err
+	}
+	offset += bytesEncoded
+
+	return offset, nil
 }
 
-func Decode(src []byte) (bytesDecoded int, result time.Time, err error) {
-	// KSLOG_DEBUG("decode");
+func DecodeTimestamp(src []byte) (result time.Time, bytesDecoded int, err error) {
 	if len(src) < 1 {
-		return 0, result, fmt.Errorf("Destination buffer has length 0")
+		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", 1, len(src))
 	}
 
-	shiftMagnitude := 6
-	maskMagnitude := (1 << uint(shiftMagnitude)) - 1
-	// KSLOG_TRACE("mask mag %02x", maskMagnitude);
-	nextByte := src[0]
-	//     KSLOG_TRACE("Read %d: %02x", 0, src[0]);
-	srcIndex := 1
+	magnitude := int(src[0] & maskMagnitude)
+	subsecondMultiplier := subsecMultipliers[magnitude]
+	sizeSubsecond := uint(sizeSubsecond * magnitude)
+	maskSubsecond := (1 << sizeSubsecond) - 1
 
-	magnitude := nextByte >> uint(shiftMagnitude)
-	nextByte &= uint8(maskMagnitude)
-	// KSLOG_TRACE("next byte masked %02x: %02x", ~maskMagnitude, nextByte);
-
-	remainingBytes := baseSizes[magnitude] - 1
-	srcIndexEnd := srcIndex + remainingBytes
-	// KSLOG_TRACE("rem bytes %d, src index %d, src length %d", remainingBytes, srcIndex, srcLength);
-	if srcIndexEnd >= len(src) {
-		return 0, result, fmt.Errorf("Require %v bytes to decode compact date, but only %v bytes available", srcIndexEnd, len(src))
+	offset := getBaseByteCount(baseSizeTimestamp, magnitude)
+	if offset > len(src) {
+		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", offset, len(src))
 	}
 
-	accumulator := uint64(nextByte)
-	// KSLOG_TRACE("Accum %016lx", accumulator);
-	for srcIndex < srcIndexEnd {
-		// KSLOG_TRACE("Read %d: %02x", srcIndex, src[srcIndex]);
-		accumulator = (accumulator << 8) | uint64(src[srcIndex])
-		srcIndex++
-		// KSLOG_TRACE("Accum %016lx", accumulator);
-	}
+	accumulator := decodeLE(src, offset)
+	accumulator >>= sizeMagnitude
+	second := int(accumulator & maskSecond)
+	accumulator >>= sizeSecond
+	minute := int(accumulator & maskMinute)
+	accumulator >>= sizeMinute
+	hour := int(accumulator & maskHour)
+	accumulator >>= sizeHour
+	day := int(accumulator & maskDay)
+	accumulator >>= sizeDay
+	month := time.Month(accumulator & maskMonth)
+	accumulator >>= sizeMonth
+	nanosecond := (int(accumulator) & maskSubsecond) * subsecondMultiplier
+	accumulator >>= sizeSubsecond
+	yearEncoded := vlq.Rvlq(accumulator)
 
-	yearHighBits := yearHighBits[magnitude]
-	yearHighBitsMask := (1 << uint(yearHighBits)) - 1
-
-	yearEncoded := uint(accumulator & uint64(yearHighBitsMask))
-	accumulator >>= uint(yearHighBits)
-	month := int(accumulator & maskMonth)
-	accumulator >>= uint(sizeMonth)
-	day := int(accumulator & uint64(maskDay))
-	accumulator >>= uint(sizeDay)
-	hour := int(accumulator & uint64(maskHour))
-	accumulator >>= uint(sizeHour)
-	minute := int(accumulator & uint64(maskMinute))
-	accumulator >>= uint(sizeMinute)
-	second := int(accumulator & uint64(maskSecond))
-	accumulator >>= uint(sizeSecond)
-	nanosecond := int(accumulator * uint64(subsecMultipliers[magnitude]))
-
-	yearEncodedRvlq := vlq.Rvlq(yearEncoded)
 	isComplete := false
-	bytesDecoded, isComplete = yearEncodedRvlq.DecodeFrom(src[srcIndex:])
+	bytesDecoded, isComplete = yearEncoded.DecodeFrom(src[offset:])
 	if !isComplete {
-		return 0, result, fmt.Errorf("Not enough bytes to decode this compact date")
+		return result, 0, fmt.Errorf("Not enough data to decode RVLQ")
 	}
+	offset += bytesDecoded
 
-	year := decodeYear(uint32(yearEncodedRvlq))
+	timezoneIsUtc := yearEncoded&1 == 1
+	yearEncoded >>= 1
+	year := decodeYear(uint32(yearEncoded))
 
-	result = time.Date(year, time.Month(month), day, hour, minute, second, nanosecond, time.UTC)
-	bytesDecoded += srcIndex
+	location, bytesDecoded, err := decodeTimezone(src[offset:], timezoneIsUtc)
+	if err != nil {
+		return result, 0, err
+	}
+	offset += bytesDecoded
 
-	return bytesDecoded, result, err
+	result = time.Date(year, month, day, hour, minute, second, nanosecond, location)
+
+	return result, offset, nil
 }

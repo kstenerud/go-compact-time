@@ -1,4 +1,4 @@
-package compact_date
+package compact_time
 
 import (
 	"fmt"

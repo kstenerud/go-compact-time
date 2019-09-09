@@ -1,4 +1,4 @@
-module github.com/kstenerud/go-compact-date
+module github.com/kstenerud/go-compact-time
 
 go 1.12
 

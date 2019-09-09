@@ -1,7 +1,7 @@
-Compact Date
+Compact Time
 ============
 
-A go implementation of [compact date](https://github.com/kstenerud/compact-date/blob/master/compact-date-specification.md).
+A go implementation of [compact time](https://github.com/kstenerud/compact-time/blob/master/compact-time-specification.md).
 
 
 

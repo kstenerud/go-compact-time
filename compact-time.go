@@ -247,20 +247,16 @@ func timezoneEncodedSize(location *time.Location) int {
 	return 1 + len(getAbbreviatedTimezoneString(location.String()))
 }
 
-func EncodedSize(time time.Time) int {
-	magnitude := getSubsecondMagnitude(time)
-	baseByteCount := getBaseByteCount(baseSizeTimestamp, magnitude)
-	encodedYear := encodeYear(time.Year())
-	yearGroupCount := getYearGroupCount(encodedYear<<1, timestampYearUpperBits[magnitude])
-
-	return baseByteCount + yearGroupCount + timezoneEncodedSize(time.Location())
-}
-
 func encodeLE(value uint64, dst []byte, byteCount int) {
 	for i := 0; i < byteCount; i++ {
 		dst[i] = uint8(value)
 		value >>= 8
 	}
+}
+
+func encode16LE(value uint16, dst []byte) {
+	dst[0] = uint8(value)
+	dst[1] = uint8(value >> 8)
 }
 
 func decodeLE(src []byte, byteCount int) uint64 {
@@ -269,6 +265,151 @@ func decodeLE(src []byte, byteCount int) uint64 {
 		accumulator |= uint64(src[i]) << (uint(i) * 8)
 	}
 	return accumulator
+}
+
+func decode16LE(src []byte) uint16 {
+	return uint16(src[0]) | (uint16(src[1]) << 8)
+}
+
+func DateEncodedSize(time time.Time) int {
+	encodedYear := encodeYear(time.Year())
+	return byteCountDate + getYearGroupCount(encodedYear, sizeDateYearUpperBits)
+}
+
+func EncodeDate(time time.Time, dst []byte) (bytesEncoded int, err error) {
+	encodedYear := encodeYear(time.Year())
+	yearGroupCount := getYearGroupCount(encodedYear, sizeDateYearUpperBits)
+	yearGroupBitCount := yearGroupCount * bitsPerYearGroup
+	yearGroupedMask := uint32(1<<uint(yearGroupBitCount) - 1)
+
+	accumulator := uint16(time.Day())
+	accumulator = (accumulator << uint(sizeMonth)) + uint16(time.Month())
+	accumulator = (accumulator << uint(sizeDateYearUpperBits)) + uint16(encodedYear>>uint(yearGroupBitCount))
+
+	offset := 0
+	accumulatorSize := byteCountDate
+	if accumulatorSize > len(dst) {
+		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", accumulatorSize, time, len(dst))
+	}
+	encode16LE(accumulator, dst[offset:])
+	offset += accumulatorSize
+	bytesEncoded, err = vlq.Rvlq(encodedYear & yearGroupedMask).EncodeTo(dst[offset:])
+	if err != nil {
+		return bytesEncoded, err
+	}
+	offset += bytesEncoded
+
+	return offset, nil
+}
+
+func DecodeDate(src []byte) (result time.Time, bytesDecoded int, err error) {
+	if byteCountDate >= len(src) {
+		return result, 0, fmt.Errorf("Require %v bytes to decode date, but only %v available", byteCountDate, len(src))
+	}
+
+	accumulator := decode16LE(src)
+	offset := byteCountDate
+
+	yearEncoded := vlq.Rvlq(accumulator & maskDateYearUpperBits)
+	accumulator >>= sizeDateYearUpperBits
+	month := accumulator & maskMonth
+	accumulator >>= sizeMonth
+	day := accumulator & maskDay
+
+	var isComplete bool
+	bytesDecoded, isComplete = yearEncoded.DecodeFrom(src[offset:])
+	if !isComplete {
+		return result, bytesDecoded, fmt.Errorf("Require %v bytes to decode date, but only %v available", bytesDecoded+1, len(src))
+	}
+	offset += bytesDecoded
+	year := decodeYear(uint32(yearEncoded))
+
+	return time.Date(year, time.Month(month), int(day), 0, 0, 0, 0, time.UTC), offset, nil
+}
+
+func TimeEncodedSize(time time.Time) int {
+	magnitude := getSubsecondMagnitude(time)
+	baseByteCount := getBaseByteCount(baseSizeTime, magnitude)
+
+	return baseByteCount + timezoneEncodedSize(time.Location())
+}
+
+func EncodeTime(tValue time.Time, dst []byte) (bytesEncoded int, err error) {
+	magnitude := getSubsecondMagnitude(tValue)
+	subsecond := tValue.Nanosecond() / subsecMultipliers[magnitude]
+
+	accumulator := uint64(subsecond)
+	accumulator = (accumulator << uint(sizeSecond)) + uint64(tValue.Second())
+	accumulator = (accumulator << uint(sizeMinute)) + uint64(tValue.Minute())
+	accumulator = (accumulator << uint(sizeHour)) + uint64(tValue.Hour())
+	accumulator = (accumulator << uint(sizeMagnitude)) + uint64(magnitude)
+	accumulator <<= 1
+	if tValue.Location() == time.UTC {
+		accumulator += 1
+	}
+
+	offset := 0
+	accumulatorSize := getBaseByteCount(baseSizeTime, magnitude)
+	if accumulatorSize > len(dst) {
+		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", accumulatorSize, tValue, len(dst))
+	}
+	encodeLE(accumulator, dst[offset:], accumulatorSize)
+	offset += accumulatorSize
+
+	bytesEncoded, err = encodeTimezone(tValue.Location(), dst[offset:])
+	if err != nil {
+		return 0, err
+	}
+	offset += bytesEncoded
+
+	return offset, nil
+}
+
+func DecodeTime(src []byte) (result time.Time, bytesDecoded int, err error) {
+	if len(src) < 1 {
+		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", 1, len(src))
+	}
+
+	timezoneIsUtc := src[0]&1 == 1
+	magnitude := int((src[0] >> 1) & maskMagnitude)
+	subsecondMultiplier := subsecMultipliers[magnitude]
+	sizeSubsecond := uint(sizeSubsecond * magnitude)
+	maskSubsecond := (1 << sizeSubsecond) - 1
+
+	offset := getBaseByteCount(baseSizeTime, magnitude)
+	if offset > len(src) {
+		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", offset, len(src))
+	}
+
+	accumulator := decodeLE(src, offset)
+	accumulator >>= 1
+	accumulator >>= sizeMagnitude
+	hour := int(accumulator & maskHour)
+	accumulator >>= sizeHour
+	minute := int(accumulator & maskMinute)
+	accumulator >>= sizeMinute
+	second := int(accumulator & maskSecond)
+	accumulator >>= sizeSecond
+	nanosecond := (int(accumulator) & maskSubsecond) * subsecondMultiplier
+
+	location, bytesDecoded, err := decodeTimezone(src[offset:], timezoneIsUtc)
+	if err != nil {
+		return result, 0, err
+	}
+	offset += bytesDecoded
+
+	result = time.Date(0, 1, 1, hour, minute, second, nanosecond, location)
+
+	return result, offset, nil
+}
+
+func TimestampEncodedSize(time time.Time) int {
+	magnitude := getSubsecondMagnitude(time)
+	baseByteCount := getBaseByteCount(baseSizeTimestamp, magnitude)
+	encodedYear := encodeYear(time.Year())
+	yearGroupCount := getYearGroupCount(encodedYear<<1, timestampYearUpperBits[magnitude])
+
+	return baseByteCount + yearGroupCount + timezoneEncodedSize(time.Location())
 }
 
 func EncodeTimestamp(time time.Time, dst []byte) (bytesEncoded int, err error) {

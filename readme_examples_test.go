@@ -12,7 +12,7 @@ func demonstrateEncode() {
 		// TODO: Deal with this
 	}
 	date := time.Date(2020, time.Month(8), 30, 15, 33, 14, 19577323, location)
-	buffer := make([]byte, EncodedSize(date))
+	buffer := make([]byte, TimestampEncodedSize(date))
 	encodedCount, err := EncodeTimestamp(date, buffer)
 	if err != nil {
 		// TODO: Handle error

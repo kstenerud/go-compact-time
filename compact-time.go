@@ -282,9 +282,9 @@ func EncodeDate(time time.Time, dst []byte) (bytesEncoded int, err error) {
 	yearGroupBitCount := yearGroupCount * bitsPerYearGroup
 	yearGroupedMask := uint32(1<<uint(yearGroupBitCount) - 1)
 
-	accumulator := uint16(time.Day())
+	accumulator := uint16(encodedYear >> uint(yearGroupBitCount))
 	accumulator = (accumulator << uint(sizeMonth)) + uint16(time.Month())
-	accumulator = (accumulator << uint(sizeDateYearUpperBits)) + uint16(encodedYear>>uint(yearGroupBitCount))
+	accumulator = (accumulator << uint(sizeDay)) + uint16(time.Day())
 
 	offset := 0
 	accumulatorSize := byteCountDate
@@ -310,11 +310,11 @@ func DecodeDate(src []byte) (result time.Time, bytesDecoded int, err error) {
 	accumulator := decode16LE(src)
 	offset := byteCountDate
 
-	yearEncoded := vlq.Rvlq(accumulator & maskDateYearUpperBits)
-	accumulator >>= sizeDateYearUpperBits
+	day := accumulator & maskDay
+	accumulator >>= sizeDay
 	month := accumulator & maskMonth
 	accumulator >>= sizeMonth
-	day := accumulator & maskDay
+	yearEncoded := vlq.Rvlq(accumulator)
 
 	var isComplete bool
 	bytesDecoded, isComplete = yearEncoded.DecodeFrom(src[offset:])

@@ -121,8 +121,8 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 }
 
 func TestDate(t *testing.T) {
-	assertDateEncodeDecode(t, 2000, 1, 1, []byte{0x80, 0x08, 0x00})
-	assertDateEncodeDecode(t, -2000, 12, 21, []byte{0x3e, 0xae, 0x3f})
+	assertDateEncodeDecode(t, 2000, 1, 1, []byte{0x21, 0x00, 0x00})
+	assertDateEncodeDecode(t, -2000, 12, 21, []byte{0x95, 0x7d, 0x3f})
 }
 
 func TestTime(t *testing.T) {

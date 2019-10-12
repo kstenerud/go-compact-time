@@ -18,9 +18,9 @@ func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expected
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, err := EncodeDate(expectedDate, actual)
-	if err != nil {
-		t.Errorf("Got error %v", err)
+	encodedCount, ok := EncodeDate(expectedDate, actual)
+	if !ok {
+		t.Errorf("Not enough room to encode date %v", expectedDate)
 	}
 	if encodedCount != len(expected) {
 		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
@@ -29,9 +29,9 @@ func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expected
 		t.Errorf("Expected encoded bytes %v but got %v", expected, actual)
 	}
 
-	actualDate, decodedCount, err := DecodeDate(expected)
-	if err != nil {
-		t.Errorf("Got error %v", err)
+	actualDate, decodedCount, ok := DecodeDate(expected)
+	if !ok {
+		t.Errorf("Not enough bytes to decode date")
 	}
 	if decodedCount != len(expected) {
 		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)
@@ -59,9 +59,12 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, err := EncodeTime(expectedDate, actual)
+	encodedCount, ok, err := EncodeTime(expectedDate, actual)
 	if err != nil {
 		t.Errorf("Got error %v", err)
+	}
+	if !ok {
+		t.Errorf("Not enough room to encode %v", expectedDate)
 	}
 	if encodedCount != len(expected) {
 		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
@@ -70,9 +73,12 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 		t.Errorf("Expected encoded bytes %v but got %v", expected, actual)
 	}
 
-	actualDate, decodedCount, err := DecodeTime(expected)
+	actualDate, decodedCount, ok, err := DecodeTime(expected)
 	if err != nil {
 		t.Errorf("Got error %v", err)
+	}
+	if !ok {
+		t.Errorf("Not enough data to decode time")
 	}
 	if decodedCount != len(expected) {
 		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)
@@ -97,9 +103,12 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, err := EncodeTimestamp(expectedDate, actual)
+	encodedCount, ok, err := EncodeTimestamp(expectedDate, actual)
 	if err != nil {
 		t.Errorf("Got error %v", err)
+	}
+	if !ok {
+		t.Errorf("Not enough room to encode timestamp %v", expectedDate)
 	}
 	if encodedCount != len(expected) {
 		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
@@ -108,9 +117,12 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 		t.Errorf("Expected encoded bytes %v but got %v", expected, actual)
 	}
 
-	actualDate, decodedCount, err := DecodeTimestamp(expected)
+	actualDate, decodedCount, ok, err := DecodeTimestamp(expected)
 	if err != nil {
 		t.Errorf("Got error %v", err)
+	}
+	if !ok {
+		t.Errorf("Not enough data to decode timestamp")
 	}
 	if decodedCount != len(expected) {
 		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)

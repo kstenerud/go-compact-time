@@ -131,30 +131,32 @@ func getYearGroupCount(encodedYear uint32, uncountedBits int) int {
 	return size
 }
 
-func writeLocationString(location string, dst []byte) (bytesEncoded int, err error) {
+func writeLocationString(location string, dst []byte) (bytesEncoded int, ok bool) {
 	location = getAbbreviatedTimezoneString(location)
-	byteCount := len(location) + 1
-	if len(dst) < byteCount {
-		return 0, fmt.Errorf("Require %v bytes to store location [%v], but only %v bytes available", byteCount, location, len(dst))
+	bytesEncoded = len(location) + 1
+	if len(dst) < bytesEncoded {
+		return bytesEncoded, false
 	}
 	dst[0] = byte(len(location) << 1)
 	copy(dst[1:], location)
-	return byteCount, nil
+	return bytesEncoded, true
 }
 
-func encodeTimezone(location *time.Location, dst []byte) (bytesEncoded int, err error) {
+func encodeTimezone(location *time.Location, dst []byte) (bytesEncoded int, ok bool, err error) {
 	// TODO: lat-long support?
 	switch location {
 	case time.UTC:
-		return 0, nil
+		return 0, true, nil
 	case time.Local:
-		return writeLocationString("L", dst)
+		bytesEncoded, ok = writeLocationString("L", dst)
+		return bytesEncoded, ok, nil
 	default:
 		_, err := time.LoadLocation(location.String())
 		if err != nil {
-			return 0, fmt.Errorf("%v is not an IANA time zone, or time zone database not found", location)
+			return 0, false, fmt.Errorf("%v is not an IANA time zone, or time zone database not found", location)
 		}
-		return writeLocationString(location.String(), dst)
+		bytesEncoded, ok = writeLocationString(location.String(), dst)
+		return bytesEncoded, ok, nil
 	}
 }
 
@@ -207,33 +209,33 @@ func getAbbreviatedTimezoneString(tz string) string {
 	return tz
 }
 
-func decodeTimezone(src []byte, timezoneIsUtc bool) (location *time.Location, bytesDecoded int, err error) {
+func decodeTimezone(src []byte, timezoneIsUtc bool) (location *time.Location, bytesDecoded int, ok bool, err error) {
 	if timezoneIsUtc {
-		return time.UTC, 0, nil
+		return time.UTC, 0, true, nil
 	}
 
 	if len(src) < 1 {
-		return nil, 0, fmt.Errorf("Require %v bytes to read location, but only %v bytes available", 1, len(src))
+		return nil, len(src), false, nil
 	}
 
 	isLatlong := src[0] & 1
 	if isLatlong == 1 {
-		return nil, 0, fmt.Errorf("TODO: latlong not supported")
+		return nil, 0, false, fmt.Errorf("TODO: latlong not supported")
 	}
 
 	offset := 0
 	length := int(src[offset] >> 1)
 	offset++
 	if offset+length > len(src) {
-		return nil, 0, fmt.Errorf("Require %v bytes to read location, but only %v bytes available", length, len(src))
+		return nil, offset + length, false, nil
 	}
 	name := string(src[offset : offset+length])
 	offset += length
 	location, err = time.LoadLocation(getFullTimezoneString(name))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	return location, offset, nil
+	return location, offset, true, nil
 }
 
 func timezoneEncodedSize(location *time.Location) int {
@@ -271,12 +273,16 @@ func decode16LE(src []byte) uint16 {
 	return uint16(src[0]) | (uint16(src[1]) << 8)
 }
 
+// Get the number of bytes that would be required to encode this date.
 func DateEncodedSize(time time.Time) int {
 	encodedYear := encodeYear(time.Year())
 	return byteCountDate + getYearGroupCount(encodedYear, sizeDateYearUpperBits)
 }
 
-func EncodeDate(time time.Time, dst []byte) (bytesEncoded int, err error) {
+// Encode a date.
+// Returns the number of bytes encoded, or the number of bytes it attempted to encode.
+// Returns ok=true if there was enough room in dst.
+func EncodeDate(time time.Time, dst []byte) (bytesEncoded int, ok bool) {
 	encodedYear := encodeYear(time.Year())
 	yearGroupCount := getYearGroupCount(encodedYear, sizeDateYearUpperBits)
 	yearGroupBitCount := yearGroupCount * bitsPerYearGroup
@@ -289,22 +295,26 @@ func EncodeDate(time time.Time, dst []byte) (bytesEncoded int, err error) {
 	offset := 0
 	accumulatorSize := byteCountDate
 	if accumulatorSize > len(dst) {
-		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", accumulatorSize, time, len(dst))
+		return accumulatorSize, false
 	}
 	encode16LE(accumulator, dst[offset:])
 	offset += accumulatorSize
-	bytesEncoded, err = vlq.Rvlq(encodedYear & yearGroupedMask).EncodeTo(dst[offset:])
-	if err != nil {
-		return bytesEncoded, err
+	bytesEncoded, ok = vlq.Rvlq(encodedYear & yearGroupedMask).EncodeTo(dst[offset:])
+	if !ok {
+		return offset + bytesEncoded, ok
 	}
 	offset += bytesEncoded
 
-	return offset, nil
+	return offset, true
 }
 
-func DecodeDate(src []byte) (result time.Time, bytesDecoded int, err error) {
+// Decode a date.
+// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
+// Returns ok=true if there was enough data in src.
+// If ok == false, the resulting date is invalid.
+func DecodeDate(src []byte) (result time.Time, bytesDecoded int, ok bool) {
 	if byteCountDate >= len(src) {
-		return result, 0, fmt.Errorf("Require %v bytes to decode date, but only %v available", byteCountDate, len(src))
+		return result, byteCountDate, false
 	}
 
 	accumulator := decode16LE(src)
@@ -319,14 +329,15 @@ func DecodeDate(src []byte) (result time.Time, bytesDecoded int, err error) {
 	var isComplete bool
 	bytesDecoded, isComplete = yearEncoded.DecodeFrom(src[offset:])
 	if !isComplete {
-		return result, bytesDecoded, fmt.Errorf("Require %v bytes to decode date, but only %v available", bytesDecoded+1, len(src))
+		return result, offset + bytesDecoded, isComplete
 	}
 	offset += bytesDecoded
 	year := decodeYear(uint32(yearEncoded))
 
-	return time.Date(year, time.Month(month), int(day), 0, 0, 0, 0, time.UTC), offset, nil
+	return time.Date(year, time.Month(month), int(day), 0, 0, 0, 0, time.UTC), offset, true
 }
 
+// Get the number of bytes that would be required to encode this time value.
 func TimeEncodedSize(time time.Time) int {
 	magnitude := getSubsecondMagnitude(time)
 	baseByteCount := getBaseByteCount(baseSizeTime, magnitude)
@@ -334,7 +345,11 @@ func TimeEncodedSize(time time.Time) int {
 	return baseByteCount + timezoneEncodedSize(time.Location())
 }
 
-func EncodeTime(tValue time.Time, dst []byte) (bytesEncoded int, err error) {
+// Encode a time value.
+// Returns the number of bytes encoded, or the number of bytes it attempted to encode.
+// Returns ok=true if there was enough room in dst.
+// Returns an error if something went wrong other than there not being enough room.
+func EncodeTime(tValue time.Time, dst []byte) (bytesEncoded int, ok bool, err error) {
 	magnitude := getSubsecondMagnitude(tValue)
 	subsecond := tValue.Nanosecond() / subsecMultipliers[magnitude]
 
@@ -351,23 +366,28 @@ func EncodeTime(tValue time.Time, dst []byte) (bytesEncoded int, err error) {
 	offset := 0
 	accumulatorSize := getBaseByteCount(baseSizeTime, magnitude)
 	if accumulatorSize > len(dst) {
-		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", accumulatorSize, tValue, len(dst))
+		return accumulatorSize, false, nil
 	}
 	encodeLE(accumulator, dst[offset:], accumulatorSize)
 	offset += accumulatorSize
 
-	bytesEncoded, err = encodeTimezone(tValue.Location(), dst[offset:])
-	if err != nil {
-		return 0, err
+	bytesEncoded, ok, err = encodeTimezone(tValue.Location(), dst[offset:])
+	if !ok || err != nil {
+		return offset + bytesEncoded, ok, err
 	}
 	offset += bytesEncoded
 
-	return offset, nil
+	return offset, true, nil
 }
 
-func DecodeTime(src []byte) (result time.Time, bytesDecoded int, err error) {
+// Decode a time value.
+// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
+// Returns ok=true if there was enough data in src.
+// Returns an error if something went wrong other than there not being enough data.
+// If ok == false or err != nil, the resulting time value is invalid.
+func DecodeTime(src []byte) (result time.Time, bytesDecoded int, ok bool, err error) {
 	if len(src) < 1 {
-		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", 1, len(src))
+		return result, 1, false, nil
 	}
 
 	timezoneIsUtc := src[0]&1 == 1
@@ -378,7 +398,7 @@ func DecodeTime(src []byte) (result time.Time, bytesDecoded int, err error) {
 
 	offset := getBaseByteCount(baseSizeTime, magnitude)
 	if offset > len(src) {
-		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", offset, len(src))
+		return result, offset, false, nil
 	}
 
 	accumulator := decodeLE(src, offset)
@@ -392,17 +412,18 @@ func DecodeTime(src []byte) (result time.Time, bytesDecoded int, err error) {
 	accumulator >>= sizeSecond
 	nanosecond := (int(accumulator) & maskSubsecond) * subsecondMultiplier
 
-	location, bytesDecoded, err := decodeTimezone(src[offset:], timezoneIsUtc)
-	if err != nil {
-		return result, 0, err
+	location, bytesDecoded, ok, err := decodeTimezone(src[offset:], timezoneIsUtc)
+	if !ok || err != nil {
+		return result, offset + bytesDecoded, ok, err
 	}
 	offset += bytesDecoded
 
 	result = time.Date(0, 1, 1, hour, minute, second, nanosecond, location)
 
-	return result, offset, nil
+	return result, offset, true, nil
 }
 
+// Get the number of bytes that would be required to encode this timestamp.
 func TimestampEncodedSize(time time.Time) int {
 	magnitude := getSubsecondMagnitude(time)
 	baseByteCount := getBaseByteCount(baseSizeTimestamp, magnitude)
@@ -412,7 +433,11 @@ func TimestampEncodedSize(time time.Time) int {
 	return baseByteCount + yearGroupCount + timezoneEncodedSize(time.Location())
 }
 
-func EncodeTimestamp(time time.Time, dst []byte) (bytesEncoded int, err error) {
+// Encode a timestamp.
+// Returns the number of bytes encoded, or the number of bytes it attempted to encode.
+// Returns ok=true if there was enough room in dst.
+// Returns an error if something went wrong other than there not being enough room.
+func EncodeTimestamp(time time.Time, dst []byte) (bytesEncoded int, ok bool, err error) {
 	magnitude := getSubsecondMagnitude(time)
 	encodedYear := encodeYearAndUtcFlag(time)
 	yearGroupCount := getYearGroupCount(encodedYear, timestampYearUpperBits[magnitude])
@@ -432,29 +457,34 @@ func EncodeTimestamp(time time.Time, dst []byte) (bytesEncoded int, err error) {
 	offset := 0
 	accumulatorSize := getBaseByteCount(baseSizeTimestamp, magnitude)
 	if accumulatorSize > len(dst) {
-		return 0, fmt.Errorf("Require %v bytes to store [%v], but only %v bytes available", accumulatorSize, time, len(dst))
+		return accumulatorSize, false, nil
 	}
 	encodeLE(accumulator, dst[offset:], accumulatorSize)
 	offset += accumulatorSize
 
-	bytesEncoded, err = vlq.Rvlq(encodedYear & yearGroupedMask).EncodeTo(dst[offset:])
-	if err != nil {
-		return 0, err
+	bytesEncoded, ok = vlq.Rvlq(encodedYear & yearGroupedMask).EncodeTo(dst[offset:])
+	if !ok {
+		return offset + bytesEncoded, ok, nil
 	}
 	offset += bytesEncoded
 
-	bytesEncoded, err = encodeTimezone(time.Location(), dst[offset:])
-	if err != nil {
-		return 0, err
+	bytesEncoded, ok, err = encodeTimezone(time.Location(), dst[offset:])
+	if !ok || err != nil {
+		return offset + bytesEncoded, ok, err
 	}
 	offset += bytesEncoded
 
-	return offset, nil
+	return offset, true, nil
 }
 
-func DecodeTimestamp(src []byte) (result time.Time, bytesDecoded int, err error) {
+// Decode a timestamp.
+// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
+// Returns ok=true if there was enough data in src.
+// Returns an error if something went wrong other than there not being enough data.
+// If ok == false or err != nil, the resulting timestamp is invalid.
+func DecodeTimestamp(src []byte) (result time.Time, bytesDecoded int, ok bool, err error) {
 	if len(src) < 1 {
-		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", 1, len(src))
+		return result, 1, false, nil
 	}
 
 	magnitude := int(src[0] & maskMagnitude)
@@ -464,7 +494,7 @@ func DecodeTimestamp(src []byte) (result time.Time, bytesDecoded int, err error)
 
 	offset := getBaseByteCount(baseSizeTimestamp, magnitude)
 	if offset > len(src) {
-		return result, 0, fmt.Errorf("Require %v bytes to decode timestamp, but only %v available", offset, len(src))
+		return result, offset, false, nil
 	}
 
 	accumulator := decodeLE(src, offset)
@@ -486,7 +516,7 @@ func DecodeTimestamp(src []byte) (result time.Time, bytesDecoded int, err error)
 	isComplete := false
 	bytesDecoded, isComplete = yearEncoded.DecodeFrom(src[offset:])
 	if !isComplete {
-		return result, 0, fmt.Errorf("Not enough data to decode RVLQ")
+		return result, offset + bytesDecoded, isComplete, nil
 	}
 	offset += bytesDecoded
 
@@ -494,13 +524,13 @@ func DecodeTimestamp(src []byte) (result time.Time, bytesDecoded int, err error)
 	yearEncoded >>= 1
 	year := decodeYear(uint32(yearEncoded))
 
-	location, bytesDecoded, err := decodeTimezone(src[offset:], timezoneIsUtc)
-	if err != nil {
-		return result, 0, err
+	location, bytesDecoded, ok, err := decodeTimezone(src[offset:], timezoneIsUtc)
+	if !ok || err != nil {
+		return result, offset + bytesDecoded, ok, err
 	}
 	offset += bytesDecoded
 
 	result = time.Date(year, month, day, hour, minute, second, nanosecond, location)
 
-	return result, offset, nil
+	return result, offset, true, nil
 }

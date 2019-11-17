@@ -21,7 +21,7 @@ func demonstrateEncode() {
 		// TODO: Not enough room in buffer to encode
 	}
 	fmt.Printf("Encoded [%v] into %v bytes: %v\n", date, encodedCount, buffer)
-	// Prints: Encoded [2020-08-30 15:33:14.019577323 +0800 +08] into 21 bytes: [59 225 243 184 158 171 18 0 80 22 83 47 83 105 110 103 97 112 111 114 101]
+	// Prints: Encoded [2020-08-30 15:33:14.019577323 +0800 +08] into 21 bytes: [59 225 243 184 158 171 18 0 80 44 83 47 83 105 110 103 97 112 111 114 101]
 }
 
 func demonstrateDecode() {

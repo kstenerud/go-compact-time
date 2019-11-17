@@ -28,6 +28,7 @@ const baseSizeTimestamp = sizeMagnitude + sizeSecond + sizeMinute + sizeHour + s
 
 const byteCountDate = 2
 
+const maskLatLong = 1
 const maskMagnitude = ((1 << sizeMagnitude) - 1)
 const maskSecond = ((1 << sizeSecond) - 1)
 const maskMinute = ((1 << sizeMinute) - 1)
@@ -37,6 +38,10 @@ const maskMonth = ((1 << sizeMonth) - 1)
 const maskLatitude = ((1 << sizeLatitude) - 1)
 const maskLongitude = ((1 << sizeLongitude) - 1)
 const maskDateYearUpperBits = ((1 << sizeDateYearUpperBits) - 1)
+
+const shiftLength = 2
+const shiftLatitude = 2
+const shiftLongitude = 16
 
 var timestampYearUpperBits = [...]int{4, 2, 0, 6}
 var subsecMultipliers = [...]int{1, 1000000, 1000, 1}
@@ -137,7 +142,7 @@ func writeLocationString(location string, dst []byte) (bytesEncoded int, ok bool
 	if len(dst) < bytesEncoded {
 		return bytesEncoded, false
 	}
-	dst[0] = byte(len(location) << 1)
+	dst[0] = byte(len(location) << shiftLength)
 	copy(dst[1:], location)
 	return bytesEncoded, true
 }
@@ -168,9 +173,9 @@ func getFullTimezoneString(tz string) string {
 
 	if len(tz) == 1 {
 		switch firstChar {
-		case 'l':
+		case 'L':
 			return "Local"
-		case 'z':
+		case 'Z':
 			return "Etc/UTC"
 		}
 		return tz
@@ -218,13 +223,13 @@ func decodeTimezone(src []byte, timezoneIsUtc bool) (location *time.Location, by
 		return nil, len(src), false, nil
 	}
 
-	isLatlong := src[0] & 1
+	isLatlong := src[0] & maskLatLong
 	if isLatlong == 1 {
 		return nil, 0, false, fmt.Errorf("TODO: latlong not supported")
 	}
 
 	offset := 0
-	length := int(src[offset] >> 1)
+	length := int(src[offset] >> shiftLength)
 	offset++
 	if offset+length > len(src) {
 		return nil, offset + length, false, nil

@@ -259,8 +259,8 @@ func encodeTimezone(time *Time, dst []byte) (bytesEncoded int, isComplete bool, 
 		if bytesEncoded > len(dst) {
 			return
 		}
-		latLong := ((time.LongitudeHundredths & maskLongitude) << shiftLongitude) |
-			((time.LatitudeHundredths & maskLatitude) << shiftLatitude) | maskLatLong
+		latLong := ((int(time.LongitudeHundredths) & maskLongitude) << shiftLongitude) |
+			((int(time.LatitudeHundredths) & maskLatitude) << shiftLatitude) | maskLatLong
 		encode32LE(uint32(latLong), dst)
 		isComplete = true
 	default:
@@ -288,8 +288,8 @@ func decodeTimezone(src []byte, time *Time, isUTC bool) (bytesDecoded int, isCom
 			return
 		}
 		latLong := decode32LE(src)
-		time.LongitudeHundredths = int(int32(latLong) >> shiftLongitude)
-		time.LatitudeHundredths = int((int32(latLong<<16) >> 17) & maskLatitude)
+		time.LongitudeHundredths = int16(int32(latLong) >> shiftLongitude)
+		time.LatitudeHundredths = int16((int32(latLong<<16) >> 17) & maskLatitude)
 		isComplete = true
 		return
 	}
@@ -347,9 +347,9 @@ func DecodeDate(src []byte) (time *Time, bytesDecoded int, isComplete bool, err 
 	time.TimeIs = TypeDate
 	time.TimezoneIs = TypeUTC
 	accumulator := int(decode16LE(src))
-	time.Day = accumulator & maskDay
+	time.Day = int8(accumulator & maskDay)
 	accumulator >>= sizeDay
-	time.Month = accumulator & maskMonth
+	time.Month = int8(accumulator & maskMonth)
 	accumulator >>= sizeMonth
 	yearEncoded := vlq.Rvlq(accumulator)
 
@@ -364,15 +364,15 @@ func DecodeDate(src []byte) (time *Time, bytesDecoded int, isComplete bool, err 
 }
 
 func encodedSizeTime(time *Time) int {
-	magnitude := getSubsecondMagnitude(time.Nanosecond)
+	magnitude := getSubsecondMagnitude(int(time.Nanosecond))
 	baseByteCount := getBaseByteCount(baseSizeTime, magnitude)
 
 	return baseByteCount + encodedSizeTimezone(time)
 }
 
 func encodeTime(time *Time, dst []byte) (bytesEncoded int, isComplete bool, err error) {
-	magnitude := getSubsecondMagnitude(time.Nanosecond)
-	subsecond := time.Nanosecond / subsecMultipliers[magnitude]
+	magnitude := getSubsecondMagnitude(int(time.Nanosecond))
+	subsecond := int(time.Nanosecond) / subsecMultipliers[magnitude]
 
 	accumulator := uint64(subsecond)
 	accumulator = (accumulator << uint(sizeSecond)) + uint64(time.Second)
@@ -423,13 +423,13 @@ func DecodeTime(src []byte) (time *Time, bytesDecoded int, isComplete bool, err 
 	isUTC := accumulator&1 == 1
 	accumulator >>= 1
 	accumulator >>= sizeMagnitude
-	time.Hour = int(accumulator & maskHour)
+	time.Hour = int8(accumulator & maskHour)
 	accumulator >>= sizeHour
-	time.Minute = int(accumulator & maskMinute)
+	time.Minute = int8(accumulator & maskMinute)
 	accumulator >>= sizeMinute
-	time.Second = int(accumulator & maskSecond)
+	time.Second = int8(accumulator & maskSecond)
 	accumulator >>= sizeSecond
-	time.Nanosecond = (int(accumulator) & maskSubsecond) * subsecondMultiplier
+	time.Nanosecond = int32((int(accumulator) & maskSubsecond) * subsecondMultiplier)
 
 	byteCount := 0
 	byteCount, isComplete = decodeTimezone(src[bytesDecoded:], time, isUTC)
@@ -443,7 +443,7 @@ func DecodeTime(src []byte) (time *Time, bytesDecoded int, isComplete bool, err 
 }
 
 func encodedSizeTimestamp(time *Time) int {
-	magnitude := getSubsecondMagnitude(time.Nanosecond)
+	magnitude := getSubsecondMagnitude(int(time.Nanosecond))
 	baseByteCount := getBaseByteCount(baseSizeTimestamp, magnitude)
 	encodedYear := encodeYear(time.Year)
 	yearGroupCount := getYearGroupCount(encodedYear<<1, timestampYearUpperBits[magnitude])
@@ -452,7 +452,7 @@ func encodedSizeTimestamp(time *Time) int {
 }
 
 func encodeTimestamp(time *Time, dst []byte) (bytesEncoded int, isComplete bool, err error) {
-	magnitude := getSubsecondMagnitude(time.Nanosecond)
+	magnitude := getSubsecondMagnitude(int(time.Nanosecond))
 	encodedYear := encodeYear(time.Year) << 1
 	if time.TimezoneIs == TypeUTC {
 		encodedYear |= 1
@@ -460,7 +460,7 @@ func encodeTimestamp(time *Time, dst []byte) (bytesEncoded int, isComplete bool,
 	yearGroupCount := getYearGroupCount(encodedYear, timestampYearUpperBits[magnitude])
 	yearGroupBitCount := yearGroupCount * bitsPerYearGroup
 	yearGroupedMask := uint32(1<<uint(yearGroupBitCount) - 1)
-	subsecond := time.Nanosecond / subsecMultipliers[magnitude]
+	subsecond := int(time.Nanosecond) / subsecMultipliers[magnitude]
 
 	accumulator := uint64(encodedYear) >> uint(yearGroupBitCount)
 	accumulator = (accumulator << uint(sizeSubsecond*magnitude)) + uint64(subsecond)
@@ -513,17 +513,17 @@ func DecodeTimestamp(src []byte) (time *Time, bytesDecoded int, isComplete bool,
 	time.TimeIs = TypeTimestamp
 	accumulator := decodeLE(src, bytesDecoded)
 	accumulator >>= sizeMagnitude
-	time.Second = int(accumulator & maskSecond)
+	time.Second = int8(accumulator & maskSecond)
 	accumulator >>= sizeSecond
-	time.Minute = int(accumulator & maskMinute)
+	time.Minute = int8(accumulator & maskMinute)
 	accumulator >>= sizeMinute
-	time.Hour = int(accumulator & maskHour)
+	time.Hour = int8(accumulator & maskHour)
 	accumulator >>= sizeHour
-	time.Day = int(accumulator & maskDay)
+	time.Day = int8(accumulator & maskDay)
 	accumulator >>= sizeDay
-	time.Month = int(accumulator & maskMonth)
+	time.Month = int8(accumulator & maskMonth)
 	accumulator >>= sizeMonth
-	time.Nanosecond = (int(accumulator) & maskSubsecond) * subsecondMultiplier
+	time.Nanosecond = int32((int(accumulator) & maskSubsecond) * subsecondMultiplier)
 	accumulator >>= sizeSubsecond
 	yearEncoded := vlq.Rvlq(accumulator)
 

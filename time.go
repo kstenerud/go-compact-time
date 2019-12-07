@@ -8,7 +8,7 @@ import (
 const (
 	monthMin      = 1
 	monthMax      = 12
-	dayMin        = 1
+	dayMin        = int8(1)
 	hourMin       = 0
 	hourMax       = 23
 	minuteMin     = 0
@@ -23,18 +23,17 @@ const (
 	longitudeMax  = 18000
 )
 
-var dayMax = [...]int{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+var dayMax = [...]int8{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
 
-type TimeType int
+type TimeType int8
 
 const (
-	TypeUnset = TimeType(iota)
-	TypeDate
+	TypeDate = TimeType(iota)
 	TypeTime
 	TypeTimestamp
 )
 
-type TimezoneType int
+type TimezoneType int8
 
 const (
 	TypeUTC = TimezoneType(iota)
@@ -43,18 +42,26 @@ const (
 )
 
 type Time struct {
+	Year                int
+	Nanosecond          int32
+	LatitudeHundredths  int16
+	LongitudeHundredths int16
+	Month               int8
+	Day                 int8
+	Hour                int8
+	Minute              int8
+	Second              int8
 	TimeIs              TimeType
 	TimezoneIs          TimezoneType
-	Year                int
-	Month               int
-	Day                 int
-	Hour                int
-	Minute              int
-	Second              int
-	Nanosecond          int
-	LatitudeHundredths  int
-	LongitudeHundredths int
 	AreaLocation        string
+}
+
+func (this *Time) initTimeCommon(hour, minute, second, nanosecond int) {
+	this.Hour = int8(hour)
+	this.Minute = int8(minute)
+	this.Second = int8(second)
+	this.Nanosecond = int32(nanosecond)
+	this.TimeIs = TypeTime
 }
 
 func NewDate(year, month, day int) *Time {
@@ -65,8 +72,8 @@ func NewDate(year, month, day int) *Time {
 
 func (this *Time) InitDate(year, month, day int) {
 	this.Year = year
-	this.Month = month
-	this.Day = day
+	this.Month = int8(month)
+	this.Day = int8(day)
 	this.TimeIs = TypeDate
 }
 
@@ -79,17 +86,13 @@ func NewTime(hour, minute, second, nanosecond int, areaLocation string) *Time {
 
 // Init a time. If areaLocation is empty, UTC is assumed.
 func (this *Time) InitTime(hour, minute, second, nanosecond int, areaLocation string) {
-	this.Hour = hour
-	this.Minute = minute
-	this.Second = second
-	this.Nanosecond = nanosecond
+	this.initTimeCommon(hour, minute, second, nanosecond)
 	this.AreaLocation = areaLocation
 	if len(areaLocation) == 0 {
 		this.TimezoneIs = TypeUTC
 	} else {
 		this.TimezoneIs = TypeAreaLocation
 	}
-	this.TimeIs = TypeTime
 }
 
 func NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) *Time {
@@ -99,14 +102,10 @@ func NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longit
 }
 
 func (this *Time) InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) {
-	this.Hour = hour
-	this.Minute = minute
-	this.Second = second
-	this.Nanosecond = nanosecond
-	this.LatitudeHundredths = latitudeHundredths
-	this.LongitudeHundredths = longitudeHundredths
+	this.initTimeCommon(hour, minute, second, nanosecond)
+	this.LatitudeHundredths = int16(latitudeHundredths)
+	this.LongitudeHundredths = int16(longitudeHundredths)
 	this.TimezoneIs = TypeLatitudeLongitude
-	this.TimeIs = TypeTime
 }
 
 // Create a new timestamp. If areaLocation is empty, UTC is assumed.
@@ -166,7 +165,14 @@ func (this *Time) AsGoTime() (result gotime.Time, err error) {
 		err = fmt.Errorf("%v: Unknown time zone type", this.TimezoneIs)
 		return
 	}
-	result = gotime.Date(this.Year, gotime.Month(this.Month), this.Day, this.Hour, this.Minute, this.Second, this.Nanosecond, location)
+	result = gotime.Date(this.Year,
+		gotime.Month(this.Month),
+		int(this.Day),
+		int(this.Hour),
+		int(this.Minute),
+		int(this.Second),
+		int(this.Nanosecond),
+		location)
 	return
 }
 
@@ -202,7 +208,7 @@ func (this *Time) validateTimezone() error {
 		return nil
 	case TypeAreaLocation:
 		if len(this.AreaLocation) == 0 {
-			return fmt.Errorf("Time zone is specified as area/location, but the field is empty")
+			return fmt.Errorf("Time zone is specified as area/location, but the AreaLocation field is empty")
 		}
 		return nil
 	case TypeLatitudeLongitude:

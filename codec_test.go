@@ -9,11 +9,14 @@ import (
 func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expected []byte) {
 	actual := make([]byte, len(expected))
 	expectedDate := NewDate(year, month, day)
-	actualSize := EncodedSizeDate(expectedDate)
+	actualSize := EncodedSize(expectedDate)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, ok := EncodeDate(expectedDate, actual)
+	encodedCount, ok, err := Encode(expectedDate, actual)
+	if err != nil {
+		t.Errorf("Got error %v", err)
+	}
 	if !ok {
 		t.Errorf("Not enough room to encode date %v at %v", expectedDate, encodedCount)
 	}
@@ -48,11 +51,11 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 		}
 	}
 	expectedTime := NewTime(hour, minute, second, nanosecond, timezone)
-	actualSize := EncodedSizeTime(expectedTime)
+	actualSize := EncodedSize(expectedTime)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, ok, err := EncodeTime(expectedTime, actual)
+	encodedCount, ok, err := Encode(expectedTime, actual)
 	if err != nil {
 		t.Errorf("Got error %v", err)
 	}
@@ -90,11 +93,11 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 		}
 	}
 	expectedTimestamp := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
-	actualSize := EncodedSizeTimestamp(expectedTimestamp)
+	actualSize := EncodedSize(expectedTimestamp)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, ok, err := EncodeTimestamp(expectedTimestamp, actual)
+	encodedCount, ok, err := Encode(expectedTimestamp, actual)
 	if err != nil {
 		t.Errorf("Got error %v", err)
 	}
@@ -126,11 +129,11 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 func assertTimestampLatLongEncodeDecode(t *testing.T, year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int, expected []byte) {
 	actual := make([]byte, len(expected))
 	expectedTimestamp := NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	actualSize := EncodedSizeTimestamp(expectedTimestamp)
+	actualSize := encodedSizeTimestamp(expectedTimestamp)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 	}
-	encodedCount, ok, err := EncodeTimestamp(expectedTimestamp, actual)
+	encodedCount, ok, err := encodeTimestamp(expectedTimestamp, actual)
 	if err != nil {
 		t.Errorf("Got error %v", err)
 	}

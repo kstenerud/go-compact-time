@@ -12,8 +12,8 @@ func demonstrateEncode() {
 		// TODO: Handle error
 	}
 	date := time.Date(2020, time.Month(8), 30, 15, 33, 14, 19577323, location)
-	buffer := make([]byte, EncodedSizeTimestamp(AsCompactTime(date)))
-	encodedCount, ok, err := EncodeTimestamp(AsCompactTime(date), buffer)
+	buffer := make([]byte, encodedSizeTimestamp(AsCompactTime(date)))
+	encodedCount, ok, err := encodeTimestamp(AsCompactTime(date), buffer)
 	if err != nil {
 		// TODO: Handle error
 	}
@@ -33,7 +33,7 @@ func demonstrateDecode() {
 	if !ok {
 		// TODO: Not enough bytes in buffer to decode
 	}
-	date, err := AsGoTime(rawDate)
+	date, err := rawDate.AsGoTime()
 	if err != nil {
 		// TODO: Handle error
 	}

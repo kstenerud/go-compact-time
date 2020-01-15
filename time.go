@@ -165,7 +165,7 @@ func (this *Time) AsGoTime() (result *gotime.Time, err error) {
 		err = fmt.Errorf("%v: Unknown time zone type", this.TimezoneIs)
 		return
 	}
-	result = &gotime.Date(this.Year,
+	time := gotime.Date(this.Year,
 		gotime.Month(this.Month),
 		int(this.Day),
 		int(this.Hour),
@@ -173,6 +173,7 @@ func (this *Time) AsGoTime() (result *gotime.Time, err error) {
 		int(this.Second),
 		int(this.Nanosecond),
 		location)
+	result = &time
 	return
 }
 

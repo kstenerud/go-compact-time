@@ -2,6 +2,7 @@ package compact_time
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 	"time"
 )
@@ -24,7 +25,7 @@ func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expected
 		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
 	}
 	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", expected, actual)
+		t.Errorf("Expected encoded bytes %v but got %v", hex.EncodeToString(expected), hex.EncodeToString(actual))
 	}
 
 	actualDate, decodedCount, ok, err := DecodeDate(expected)
@@ -66,7 +67,7 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
 	}
 	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", expected, actual)
+		t.Errorf("Expected encoded bytes %v but got %v", hex.EncodeToString(expected), hex.EncodeToString(actual))
 	}
 
 	actualTime, decodedCount, ok, err := DecodeTime(expected)
@@ -108,7 +109,7 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
 	}
 	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", expected, actual)
+		t.Errorf("Expected encoded bytes %v but got %v", hex.EncodeToString(expected), hex.EncodeToString(actual))
 	}
 
 	actualTimestamp, decodedCount, ok, err := DecodeTimestamp(expected)

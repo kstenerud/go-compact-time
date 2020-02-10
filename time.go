@@ -134,7 +134,7 @@ func (this *Time) InitTimestampLatLong(year, month, day, hour, minute, second, n
 	this.TimeIs = TypeTimestamp
 }
 
-func AsCompactTime(src *gotime.Time) (result *Time) {
+func AsCompactTime(src gotime.Time) (result *Time) {
 	result = NewTimestamp(src.Year(), int(src.Month()), src.Day(), src.Hour(), src.Minute(), src.Second(), src.Nanosecond(), src.Location().String())
 	if src.Location() == gotime.Local {
 		result.AreaLocation = "Local"
@@ -145,7 +145,7 @@ func AsCompactTime(src *gotime.Time) (result *Time) {
 // Convert this time into a standard go time.
 // Note: Go time doesn't support latitude/longitude time zones. Attempting to
 //       convert this type of time zone will result in an error.
-func (this *Time) AsGoTime() (result *gotime.Time, err error) {
+func (this *Time) AsGoTime() (result gotime.Time, err error) {
 	location := gotime.UTC
 	switch this.TimezoneIs {
 	case TypeUTC:
@@ -165,7 +165,7 @@ func (this *Time) AsGoTime() (result *gotime.Time, err error) {
 		err = fmt.Errorf("%v: Unknown time zone type", this.TimezoneIs)
 		return
 	}
-	time := gotime.Date(this.Year,
+	result = gotime.Date(this.Year,
 		gotime.Month(this.Month),
 		int(this.Day),
 		int(this.Hour),
@@ -173,7 +173,6 @@ func (this *Time) AsGoTime() (result *gotime.Time, err error) {
 		int(this.Second),
 		int(this.Nanosecond),
 		location)
-	result = &time
 	return
 }
 

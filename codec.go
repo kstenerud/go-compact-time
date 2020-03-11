@@ -22,6 +22,9 @@ import (
 	"github.com/kstenerud/go-vlq"
 )
 
+// Maximum byte length that this library will encode
+const MaxEncodeLength = 50
+
 const yearBias = 2000
 const bitsPerYearGroup = 7
 

@@ -2,13 +2,14 @@ package compact_time
 
 import (
 	"fmt"
+	"strings"
 	gotime "time"
 )
 
 const (
 	monthMin      = 1
 	monthMax      = 12
-	dayMin        = int8(1)
+	dayMin        = 1
 	hourMin       = 0
 	hourMax       = 23
 	minuteMin     = 0
@@ -23,9 +24,9 @@ const (
 	longitudeMax  = 18000
 )
 
-var dayMax = [...]int8{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+var dayMax = [...]uint8{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
 
-type TimeType int8
+type TimeType uint8
 
 const (
 	TypeDate = TimeType(iota)
@@ -33,7 +34,7 @@ const (
 	TypeTimestamp
 )
 
-type TimezoneType int8
+type TimezoneType uint8
 
 const (
 	TypeUTC = TimezoneType(iota)
@@ -43,24 +44,24 @@ const (
 
 type Time struct {
 	Year                int
-	Nanosecond          int32
+	Nanosecond          uint32
 	LatitudeHundredths  int16
 	LongitudeHundredths int16
-	Month               int8
-	Day                 int8
-	Hour                int8
-	Minute              int8
-	Second              int8
+	Month               uint8
+	Day                 uint8
+	Hour                uint8
+	Minute              uint8
+	Second              uint8
 	TimeIs              TimeType
 	TimezoneIs          TimezoneType
 	AreaLocation        string
 }
 
 func (this *Time) initTimeCommon(hour, minute, second, nanosecond int) {
-	this.Hour = int8(hour)
-	this.Minute = int8(minute)
-	this.Second = int8(second)
-	this.Nanosecond = int32(nanosecond)
+	this.Hour = uint8(hour)
+	this.Minute = uint8(minute)
+	this.Second = uint8(second)
+	this.Nanosecond = uint32(nanosecond)
 	this.TimeIs = TypeTime
 }
 
@@ -72,8 +73,8 @@ func NewDate(year, month, day int) *Time {
 
 func (this *Time) InitDate(year, month, day int) {
 	this.Year = year
-	this.Month = int8(month)
-	this.Day = int8(day)
+	this.Month = uint8(month)
+	this.Day = uint8(day)
 	this.TimeIs = TypeDate
 }
 
@@ -135,7 +136,11 @@ func (this *Time) InitTimestampLatLong(year, month, day, hour, minute, second, n
 }
 
 func AsCompactTime(src gotime.Time) (result *Time) {
-	result = NewTimestamp(src.Year(), int(src.Month()), src.Day(), src.Hour(), src.Minute(), src.Second(), src.Nanosecond(), src.Location().String())
+	locationStr := src.Location().String()
+	if locationStr == "UTC" {
+		locationStr = ""
+	}
+	result = NewTimestamp(src.Year(), int(src.Month()), src.Day(), src.Hour(), src.Minute(), src.Second(), src.Nanosecond(), locationStr)
 	if src.Location() == gotime.Local {
 		result.AreaLocation = "Local"
 	}
@@ -252,5 +257,58 @@ func (this *Time) Validate() (err error) {
 		return this.validateTimezone()
 	default:
 		return fmt.Errorf("%v: Unknown time type", this.TimeIs)
+	}
+}
+
+func (this *Time) String() string {
+	switch this.TimeIs {
+	case TypeDate:
+		return this.formatDate()
+	case TypeTime:
+		return this.formatTime()
+	case TypeTimestamp:
+		return this.formatTimestamp()
+	default:
+		return fmt.Sprintf("Error: %v: Unknown time type", this.TimeIs)
+	}
+}
+
+func (this *Time) formatDate() string {
+	return fmt.Sprintf("%d-%02d-%02d", this.Year, this.Month, this.Day)
+}
+
+func (this *Time) formatTime() string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("%02d:%02d:%02d", this.Hour, this.Minute, this.Second))
+	if this.Nanosecond != 0 {
+		str := []byte(fmt.Sprintf("%d", this.Nanosecond))
+		for str[len(str)-1] == '0' {
+			str = str[:len(str)-1]
+		}
+		builder.WriteByte('.')
+		builder.WriteString(string(str))
+	}
+	builder.WriteString(this.formatTimezone())
+	return builder.String()
+}
+
+func (this *Time) formatTimestamp() string {
+	var builder strings.Builder
+	builder.WriteString(this.formatDate())
+	builder.WriteByte('/')
+	builder.WriteString(this.formatTime())
+	return builder.String()
+}
+
+func (this *Time) formatTimezone() string {
+	switch this.TimezoneIs {
+	case TypeUTC:
+		return ""
+	case TypeAreaLocation:
+		return fmt.Sprintf("/%s", this.AreaLocation)
+	case TypeLatitudeLongitude:
+		return fmt.Sprintf("/%.2f/%.2f", float64(this.LatitudeHundredths)/100, float64(this.LongitudeHundredths)/100)
+	default:
+		return fmt.Sprintf("Error: %v: Unknown time zone type", this.TimezoneIs)
 	}
 }

@@ -14,31 +14,32 @@ func demonstrateEncode() {
 	if err != nil {
 		// TODO: Handle error
 	}
-	date := time.Date(2020, time.Month(8), 30, 15, 33, 14, 19577323, location)
-	buffer := make([]byte, encodedSizeTimestamp(AsCompactTime(date)))
-	encodedCount, ok := encodeTimestamp(AsCompactTime(date), buffer)
+	goDate := time.Date(2020, time.Month(8), 30, 15, 33, 14, 19577323, location)
+	compactDate := compact_date.AsCompactTime(goDate)
+	buffer := make([]byte, compact_date.EncodedSize(compactDate))
+	encodedCount, ok := compact_date.Encode(compactDate, buffer)
 	if !ok {
 		// TODO: Not enough room in buffer to encode
 	}
-	fmt.Printf("Encoded [%v] into %v bytes: %v\n", date, encodedCount, buffer)
-	// Prints: Encoded [2020-08-30 15:33:14.019577323 +0800 +08] into 21 bytes: [59 225 243 184 158 171 18 0 80 22 83 47 83 105 110 103 97 112 111 114 101]
+	fmt.Printf("Encoded [%v] into %v bytes: %v\n", goDate, encodedCount, buffer)
+	// Prints: Encoded [2020-08-30 15:33:14.019577323 +0800 +08] into 21 bytes: [95 207 85 9 156 240 121 68 1 22 83 47 83 105 110 103 97 112 111 114 101]
 }
 
 func demonstrateDecode() {
-	buffer := []byte{0x14, 0x4d, 0x09, 0x1c, 0x07}
-	compactDate, decodedCount, ok := DecodeTimestamp(buffer)
+	buffer := []byte{0x28, 0x9a, 0x12, 0x78, 0x08}
+	compactDate, decodedCount, err := compact_date.DecodeTimestamp(buffer)
+	if err != nil {
+		// TODO: Check if is compact_time.ErrorIncomplete or something else
+	}
 	if err := compactDate.Validate(); err != nil {
 		// TODO: Handle error
 	}
-	if !ok {
-		// TODO: Not enough bytes in buffer to decode
-	}
-	date, err := compactDate.AsGoTime()
+	goDate, err := compactDate.AsGoTime()
 	if err != nil {
 		// TODO: Handle error
 	}
-	fmt.Printf("Decoded %v bytes of %v into [%v]\n", decodedCount, buffer, date)
-	// Prints: Decoded 5 bytes of [20 77 9 28 7] into [1966-12-01 05:13:05 +0000 UTC]
+	fmt.Printf("Decoded %v bytes of %v into [%v]\n", decodedCount, buffer, goDate)
+	// Prints: Decoded 5 bytes of [40 154 18 120 8] into [1966-12-01 05:13:05 +0000 UTC]
 }
 ```
 

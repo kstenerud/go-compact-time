@@ -202,6 +202,9 @@ func (this *Time) AsGoTime() (result gotime.Time, err error) {
 }
 
 func (this *Time) validateDate() error {
+	if this.Year == 0 {
+		return fmt.Errorf("%v: Invalid year (must not be 0)", this.Year)
+	}
 	if this.Month < monthMin || this.Month > monthMax {
 		return fmt.Errorf("%v: Invalid month (must be %v to %v)", this.Month, monthMin, monthMax)
 	}
@@ -212,9 +215,6 @@ func (this *Time) validateDate() error {
 }
 
 func (this *Time) validateTime() error {
-	if this.Year == 0 {
-		return fmt.Errorf("%v: Invalid year (must not be 0)", this.Year)
-	}
 	if this.Hour < hourMin || this.Hour > hourMax {
 		return fmt.Errorf("%v: Invalid hour (must be %v to %v)", this.Hour, hourMin, hourMax)
 	}

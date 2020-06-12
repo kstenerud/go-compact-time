@@ -206,7 +206,7 @@ func (this *Time) validateDate() error {
 		return fmt.Errorf("%v: Invalid month (must be %v to %v)", this.Month, monthMin, monthMax)
 	}
 	if this.Day < dayMin || this.Day > dayMax[this.Month] {
-		return fmt.Errorf("%v: Invalid day (must be %v to %v)", this.Day, dayMin, dayMax)
+		return fmt.Errorf("%v: Invalid day (must be %v to %v)", this.Day, dayMin, dayMax[this.Month])
 	}
 	return nil
 }

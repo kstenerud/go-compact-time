@@ -212,6 +212,9 @@ func (this *Time) validateDate() error {
 }
 
 func (this *Time) validateTime() error {
+	if this.Year == 0 {
+		return fmt.Errorf("%v: Invalid year (must not be 0)", this.Year)
+	}
 	if this.Hour < hourMin || this.Hour > hourMax {
 		return fmt.Errorf("%v: Invalid hour (must be %v to %v)", this.Hour, hourMin, hourMax)
 	}

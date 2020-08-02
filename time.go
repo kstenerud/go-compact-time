@@ -304,7 +304,7 @@ func (this *Time) formatTime() string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("%02d:%02d:%02d", this.Hour, this.Minute, this.Second))
 	if this.Nanosecond != 0 {
-		str := []byte(fmt.Sprintf("%d", this.Nanosecond))
+		str := []byte(fmt.Sprintf("%09d", this.Nanosecond))
 		for str[len(str)-1] == '0' {
 			str = str[:len(str)-1]
 		}

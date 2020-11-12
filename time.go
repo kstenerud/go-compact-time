@@ -57,7 +57,8 @@ const (
 type TimezoneType uint8
 
 const (
-	TypeUTC = TimezoneType(iota)
+	TypeZero = TimezoneType(iota)
+	TypeLocal
 	TypeAreaLocation
 	TypeLatitudeLongitude
 )
@@ -72,122 +73,171 @@ type Time struct {
 	Hour                uint8
 	Minute              uint8
 	Second              uint8
-	TimeIs              TimeType
-	TimezoneIs          TimezoneType
+	TimeType            TimeType
+	TimezoneType        TimezoneType
 	AreaLocation        string
+	ShortAreaLocation   string
 }
 
-func (this *Time) initTimeCommon(hour, minute, second, nanosecond int) {
-	this.Hour = uint8(hour)
-	this.Minute = uint8(minute)
-	this.Second = uint8(second)
-	this.Nanosecond = uint32(nanosecond)
-	this.TimeIs = TypeTime
-}
-
-func NewDate(year, month, day int) *Time {
+func NewDate(year, month, day int) (*Time, error) {
 	this := new(Time)
-	this.InitDate(year, month, day)
-	return this
+	if err := this.InitDate(year, month, day); err != nil {
+		return nil, err
+	}
+	return this, nil
 }
 
-func (this *Time) InitDate(year, month, day int) {
+func (this *Time) InitDate(year, month, day int) error {
 	this.Year = year
 	this.Month = uint8(month)
 	this.Day = uint8(day)
-	this.TimeIs = TypeDate
+	this.TimeType = TypeDate
+	return this.validateDate()
 }
 
-// Create a new time. If areaLocation is empty, UTC is assumed.
-func NewTime(hour, minute, second, nanosecond int, areaLocation string) *Time {
+// Create a new time. If areaLocation is empty, UTC is assumed. areaLocation is not validated
+// against any timezone databases.
+func NewTime(hour, minute, second, nanosecond int, areaLocation string) (*Time, error) {
 	this := new(Time)
-	this.InitTime(hour, minute, second, nanosecond, areaLocation)
-	return this
+	if err := this.InitTime(hour, minute, second, nanosecond, areaLocation); err != nil {
+		return nil, err
+	}
+	return this, nil
 }
 
-// Init a time. If areaLocation is empty, UTC is assumed.
-func (this *Time) InitTime(hour, minute, second, nanosecond int, areaLocation string) {
+// Init a time. If areaLocation is empty, UTC is assumed. areaLocation is not validated
+// against any timezone databases.
+func (this *Time) InitTime(hour, minute, second, nanosecond int, areaLocation string) error {
 	this.initTimeCommon(hour, minute, second, nanosecond)
 	this.AreaLocation = areaLocation
-	if len(areaLocation) == 0 {
-		this.TimezoneIs = TypeUTC
-	} else {
-		this.TimezoneIs = TypeAreaLocation
+	switch areaLocation {
+	case "", "Z", "Zero":
+		this.TimezoneType = TypeZero
+		this.AreaLocation = "Etc/UTC"
+		this.ShortAreaLocation = "Z"
+	case "Etc/GMT", "Etc/GMT+0", "Etc/GMT-0", "Etc/GMT0", "Etc/Greenwich",
+		"Etc/UCT", "Etc/Universal", "Etc/UTC", "Etc/Zulu", "Factory", "GMT",
+		"GMT+0", "GMT-0", "GMT0", "Greenwich", "UCT", "Universal", "UTC", "Zulu":
+		this.TimezoneType = TypeZero
+		this.ShortAreaLocation = "Z"
+	case "L", "Local":
+		this.TimezoneType = TypeLocal
+		this.AreaLocation = "Local"
+		this.ShortAreaLocation = "L"
+	default:
+		this.TimezoneType = TypeAreaLocation
+		tzPair := strings.SplitN(areaLocation, "/", 2)
+		if len(tzPair) > 1 {
+			area := tzPair[0]
+			location := tzPair[1]
+			if len(area) == 1 {
+				this.ShortAreaLocation = areaLocation
+				if longArea := shortAreaToArea[area]; longArea != "" {
+					this.AreaLocation = longArea + "/" + location
+				} else {
+					this.AreaLocation = areaLocation
+				}
+			} else {
+				if shortArea := areaToShortArea[area]; shortArea != "" {
+					this.ShortAreaLocation = shortArea + "/" + location
+				} else {
+					this.ShortAreaLocation = areaLocation
+				}
+			}
+		} else {
+			this.ShortAreaLocation = areaLocation
+		}
 	}
+	return this.validateTime()
 }
 
-func NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) *Time {
+func NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) (*Time, error) {
 	this := new(Time)
-	this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	return this
+	if err := this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths); err != nil {
+		return nil, err
+	}
+	return this, nil
 }
 
-func (this *Time) InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) {
+func (this *Time) InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) error {
 	this.initTimeCommon(hour, minute, second, nanosecond)
 	this.LatitudeHundredths = int16(latitudeHundredths)
 	this.LongitudeHundredths = int16(longitudeHundredths)
-	this.TimezoneIs = TypeLatitudeLongitude
+	this.TimezoneType = TypeLatitudeLongitude
+	return this.validateTime()
 }
 
-// Create a new timestamp. If areaLocation is empty, UTC is assumed.
-func NewTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) *Time {
+// Create a new timestamp. If areaLocation is empty, UTC is assumed. areaLocation
+// is not validated against any timezone databases.
+func NewTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) (*Time, error) {
 	this := new(Time)
-	this.InitTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation)
-	return this
+	if err := this.InitTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation); err != nil {
+		return nil, err
+	}
+	return this, nil
 }
 
-// Init a timestamp. If areaLocation is empty, UTC is assumed.
-func (this *Time) InitTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) {
-	this.InitDate(year, month, day)
-	this.InitTime(hour, minute, second, nanosecond, areaLocation)
-	this.TimeIs = TypeTimestamp
+// Init a timestamp. If areaLocation is empty, UTC is assumed. areaLocation is
+// not validated against any timezone databases.
+func (this *Time) InitTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) error {
+	if err := this.InitDate(year, month, day); err != nil {
+		return err
+	}
+	if err := this.InitTime(hour, minute, second, nanosecond, areaLocation); err != nil {
+		return err
+	}
+	this.TimeType = TypeTimestamp
+	return nil
 }
 
-func NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) *Time {
+func NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) (*Time, error) {
 	this := new(Time)
-	this.InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	return this
+	if err := this.InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths); err != nil {
+		return nil, err
+	}
+	return this, nil
 }
 
-func (this *Time) InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) {
-	this.InitDate(year, month, day)
-	this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	this.TimeIs = TypeTimestamp
+func (this *Time) InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) error {
+	if err := this.InitDate(year, month, day); err != nil {
+		return err
+	}
+	if err := this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths); err != nil {
+		return err
+	}
+	this.TimeType = TypeTimestamp
+	return nil
 }
 
-func AsCompactTime(src gotime.Time) (result *Time) {
+func AsCompactTime(src gotime.Time) (*Time, error) {
 	locationStr := src.Location().String()
-	if locationStr == "UTC" {
-		locationStr = ""
-	}
-	result = NewTimestamp(src.Year(), int(src.Month()), src.Day(), src.Hour(), src.Minute(), src.Second(), src.Nanosecond(), locationStr)
 	if src.Location() == gotime.Local {
-		result.AreaLocation = "Local"
+		locationStr = "Local"
 	}
-	return result
+	return NewTimestamp(src.Year(), int(src.Month()), src.Day(), src.Hour(), src.Minute(), src.Second(), src.Nanosecond(), locationStr)
 }
 
 // Convert this time into a standard go time.
 // Note: Go time doesn't support latitude/longitude time zones. Attempting to
 //       convert this type of time zone will result in an error.
+// Note: Converting to go time will validate area/location time zone (if any)
 func (this *Time) AsGoTime() (result gotime.Time, err error) {
 	location := gotime.UTC
-	switch this.TimezoneIs {
-	case TypeUTC:
+	switch this.TimezoneType {
+	case TypeZero:
 		location = gotime.UTC
+	case TypeLocal:
+		location = gotime.Local
 	case TypeLatitudeLongitude:
 		err = fmt.Errorf("Latitude/Longitude time zones are not supported by time.Time")
 		return
 	case TypeAreaLocation:
-		if this.AreaLocation == "Local" {
-			location = gotime.Local
-		}
 		location, err = gotime.LoadLocation(this.AreaLocation)
 		if err != nil {
 			return
 		}
 	default:
-		err = fmt.Errorf("%v: Unknown time zone type", this.TimezoneIs)
+		err = fmt.Errorf("%v: Unknown time zone type", this.TimezoneType)
 		return
 	}
 	result = gotime.Date(this.Year,
@@ -199,6 +249,14 @@ func (this *Time) AsGoTime() (result gotime.Time, err error) {
 		int(this.Nanosecond),
 		location)
 	return
+}
+
+func (this *Time) initTimeCommon(hour, minute, second, nanosecond int) {
+	this.Hour = uint8(hour)
+	this.Minute = uint8(minute)
+	this.Second = uint8(second)
+	this.Nanosecond = uint32(nanosecond)
+	this.TimeType = TypeTime
 }
 
 func (this *Time) validateDate() error {
@@ -227,12 +285,9 @@ func (this *Time) validateTime() error {
 	if this.Nanosecond < nanosecondMin || this.Nanosecond > nanosecondMax {
 		return fmt.Errorf("%v: Invalid nanosecond (must be %v to %v)", this.Nanosecond, nanosecondMin, nanosecondMax)
 	}
-	return nil
-}
 
-func (this *Time) validateTimezone() error {
-	switch this.TimezoneIs {
-	case TypeUTC:
+	switch this.TimezoneType {
+	case TypeZero, TypeLocal:
 		return nil
 	case TypeAreaLocation:
 		if len(this.AreaLocation) == 0 {
@@ -248,43 +303,12 @@ func (this *Time) validateTimezone() error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("%v: Unknown time zone type", this.TimezoneIs)
-	}
-}
-
-// Validate this time.
-// Only basic validation is performed, enough to ensure that it isn't blatantly
-// wrong (such as invalid area/location values, latitude 500, december 54th, etc).
-// It does not do more nuanced checks such as on which years February 29th is valid,
-// or when leap seconds are allowed. It also doesn't check for impossible timestamp
-// values such as 2011-03-13/02:10:00/Los_Angeles.
-//
-// Note: The field AreaLocation is not validated. You can validate this field
-// using time.LoadLocation() or time.LoadLocationFromTZData().
-func (this *Time) Validate() (err error) {
-	switch this.TimeIs {
-	case TypeDate:
-		return this.validateDate()
-	case TypeTime:
-		if err = this.validateTime(); err != nil {
-			return
-		}
-		return this.validateTimezone()
-	case TypeTimestamp:
-		if err = this.validateDate(); err != nil {
-			return
-		}
-		if err = this.validateTime(); err != nil {
-			return
-		}
-		return this.validateTimezone()
-	default:
-		return fmt.Errorf("%v: Unknown time type", this.TimeIs)
+		return fmt.Errorf("%v: Unknown time zone type", this.TimezoneType)
 	}
 }
 
 func (this *Time) String() string {
-	switch this.TimeIs {
+	switch this.TimeType {
 	case TypeDate:
 		return this.formatDate()
 	case TypeTime:
@@ -292,7 +316,7 @@ func (this *Time) String() string {
 	case TypeTimestamp:
 		return this.formatTimestamp()
 	default:
-		return fmt.Sprintf("Error: %v: Unknown time type", this.TimeIs)
+		return fmt.Sprintf("Error: %v: Unknown time type", this.TimeType)
 	}
 }
 
@@ -324,14 +348,46 @@ func (this *Time) formatTimestamp() string {
 }
 
 func (this *Time) formatTimezone() string {
-	switch this.TimezoneIs {
-	case TypeUTC:
+	switch this.TimezoneType {
+	case TypeZero:
 		return ""
-	case TypeAreaLocation:
+	case TypeAreaLocation, TypeLocal:
 		return fmt.Sprintf("/%s", this.AreaLocation)
 	case TypeLatitudeLongitude:
 		return fmt.Sprintf("/%.2f/%.2f", float64(this.LatitudeHundredths)/100, float64(this.LongitudeHundredths)/100)
 	default:
-		return fmt.Sprintf("Error: %v: Unknown time zone type", this.TimezoneIs)
+		return fmt.Sprintf("Error: %v: Unknown time zone type", this.TimezoneType)
 	}
+}
+
+var shortAreaToArea = map[string]string{
+	"F": "Africa",
+	"M": "America",
+	"N": "Antarctica",
+	"R": "Arctic",
+	"S": "Asia",
+	"T": "Atlantic",
+	"U": "Australia",
+	"C": "Etc",
+	"E": "Europe",
+	"I": "Indian",
+	"P": "Pacific",
+	"L": "Local",
+	"Z": "Zero",
+}
+
+var areaToShortArea = map[string]string{
+	"Africa":     "F",
+	"America":    "M",
+	"Antarctica": "N",
+	"Arctic":     "R",
+	"Asia":       "S",
+	"Atlantic":   "T",
+	"Australia":  "U",
+	"Etc":        "C",
+	"Europe":     "E",
+	"Indian":     "I",
+	"Pacific":    "P",
+	"Local":      "L",
+	"Zero":       "Z",
 }

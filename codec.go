@@ -32,7 +32,6 @@ package compact_time
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/kstenerud/go-uleb128"
 )
@@ -42,22 +41,17 @@ var ErrorIncomplete = fmt.Errorf("Compact time value is incomplete")
 // Decode a date.
 // Warning: The date fields will not be validated! Please call time.Validate()!
 // Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-// Returns isComplete=true if there was enough data in src.
-// If isComplete == false, the resulting date is invalid.
 func DecodeDate(src []byte) (time *Time, bytesDecoded int, err error) {
 	if len(src) < byteCountDate {
 		err = ErrorIncomplete
 		return
 	}
 
-	time = new(Time)
-	time.TimeIs = TypeDate
-	time.TimezoneIs = TypeUTC
 	accumulator := int(decode16LE(src))
 	bytesDecoded = 2
-	time.Day = uint8(accumulator & maskDay)
+	day := int(accumulator & maskDay)
 	accumulator >>= sizeDay
-	time.Month = uint8(accumulator & maskMonth)
+	month := int(accumulator & maskMonth)
 	accumulator >>= sizeMonth
 	asUint, asBig, byteCount, ok := uleb128.Decode(uint64(accumulator), yearLowBitCountDate, src[bytesDecoded:])
 	bytesDecoded += byteCount
@@ -73,23 +67,25 @@ func DecodeDate(src []byte) (time *Time, bytesDecoded int, err error) {
 		err = fmt.Errorf("Year (%v) is too big", asUint)
 		return
 	}
-	time.Year = decodeYear(uint32(asUint))
+	year := decodeYear(uint32(asUint))
+	time, err = NewDate(year, month, day)
 	return
 }
 
 // Decode a time value.
 // Warning: The date fields will not be validated! Please call time.Validate()!
 // Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-// Returns isComplete=true if there was enough data in src.
-// If isComplete == false, the resulting time value is invalid.
-func DecodeTime(src []byte) (time *Time, bytesDecoded int, isComplete bool) {
+func DecodeTime(src []byte) (time *Time, bytesDecoded int, err error) {
 	if len(src) == 0 {
+		err = ErrorIncomplete
 		return
 	}
 
 	magnitude := int((src[0] >> 1) & maskMagnitude)
 	baseByteCount := baseByteCountsTime[magnitude]
+	bytesDecoded = baseByteCount
 	if len(src) < baseByteCount {
+		err = ErrorIncomplete
 		return
 	}
 
@@ -97,23 +93,42 @@ func DecodeTime(src []byte) (time *Time, bytesDecoded int, isComplete bool) {
 	sizeSubseconds := uint(sizeSubsecond * magnitude)
 	maskSubsecond := bitMask(int(sizeSubseconds))
 
-	time = new(Time)
-	time.TimeIs = TypeTime
 	accumulator := decodeLE(src, baseByteCount)
 	hasTimezone := accumulator&1 == 1
 	accumulator >>= 1
 	accumulator >>= sizeMagnitude
-	time.Nanosecond = uint32(accumulator&maskSubsecond) * uint32(subsecondMultiplier)
+	nanosecond := int(accumulator&maskSubsecond) * subsecondMultiplier
 	accumulator >>= sizeSubseconds
-	time.Second = uint8(accumulator & maskSecond)
+	second := int(accumulator & maskSecond)
 	accumulator >>= sizeSecond
-	time.Minute = uint8(accumulator & maskMinute)
+	minute := int(accumulator & maskMinute)
 	accumulator >>= sizeMinute
-	time.Hour = uint8(accumulator & maskHour)
+	hour := int(accumulator & maskHour)
 
-	if byteCount, ok := decodeTimezone(src[baseByteCount:], time, hasTimezone); ok {
-		bytesDecoded = baseByteCount + byteCount
-		isComplete = true
+	if !hasTimezone {
+		time, err = NewTime(hour, minute, second, nanosecond, "")
+		return
+	}
+
+	var byteCount int
+	var latitudeHundredths int
+	var longitudeHundredths int
+	var areaLocation string
+
+	latitudeHundredths,
+		longitudeHundredths,
+		areaLocation,
+		byteCount,
+		err = decodeTimezone(src[bytesDecoded:])
+	bytesDecoded += byteCount
+	if err != nil {
+		return
+	}
+
+	if len(areaLocation) > 0 {
+		time, err = NewTime(hour, minute, second, nanosecond, areaLocation)
+	} else {
+		time, err = NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
 	}
 
 	return
@@ -122,8 +137,6 @@ func DecodeTime(src []byte) (time *Time, bytesDecoded int, isComplete bool) {
 // Decode a timestamp.
 // Warning: The date fields will not be validated! Please call time.Validate()!
 // Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-// Returns isComplete=true if there was enough data in src.
-// If isComplete == false, the resulting timestamp is invalid.
 func DecodeTimestamp(src []byte) (time *Time, bytesDecoded int, err error) {
 	if len(src) == 0 {
 		err = ErrorIncomplete
@@ -136,33 +149,32 @@ func DecodeTimestamp(src []byte) (time *Time, bytesDecoded int, err error) {
 	maskSubsecond := bitMask(int(sizeSubseconds))
 
 	baseByteCount := baseByteCountsTimestamp[magnitude]
+	bytesDecoded = baseByteCount
 	if len(src) < baseByteCount {
 		err = ErrorIncomplete
 		return
 	}
 
-	time = new(Time)
-	time.TimeIs = TypeTimestamp
 	accumulator := decodeLE(src, baseByteCount)
 	hasTimezone := accumulator&1 == 1
 	accumulator >>= 1
 	accumulator >>= sizeMagnitude
-	time.Nanosecond = uint32(accumulator&maskSubsecond) * uint32(subsecondMultiplier)
+	nanosecond := int(accumulator&maskSubsecond) * subsecondMultiplier
 	accumulator >>= sizeSubseconds
-	time.Second = uint8(accumulator & maskSecond)
+	second := int(accumulator & maskSecond)
 	accumulator >>= sizeSecond
-	time.Minute = uint8(accumulator & maskMinute)
+	minute := int(accumulator & maskMinute)
 	accumulator >>= sizeMinute
-	time.Hour = uint8(accumulator & maskHour)
+	hour := int(accumulator & maskHour)
 	accumulator >>= sizeHour
-	time.Day = uint8(accumulator & maskDay)
+	day := int(accumulator & maskDay)
 	accumulator >>= sizeDay
-	time.Month = uint8(accumulator & maskMonth)
+	month := int(accumulator & maskMonth)
 	accumulator >>= sizeMonth
 
 	yearLowBitCount := yearLowBitCountsTimestamp[magnitude]
 	asUint, asBig, byteCount, ok := uleb128.Decode(uint64(accumulator), yearLowBitCount, src[baseByteCount:])
-	bytesDecoded = byteCount + baseByteCount
+	bytesDecoded += byteCount
 	if !ok {
 		err = ErrorIncomplete
 		return
@@ -175,20 +187,39 @@ func DecodeTimestamp(src []byte) (time *Time, bytesDecoded int, err error) {
 		err = fmt.Errorf("Year (%v) is too big", asUint)
 		return
 	}
-	time.Year = decodeYear(uint32(asUint))
+	year := decodeYear(uint32(asUint))
 
-	if byteCount, ok = decodeTimezone(src[bytesDecoded:], time, hasTimezone); !ok {
-		err = ErrorIncomplete
+	if !hasTimezone {
+		time, err = NewTimestamp(year, month, day, hour, minute, second, nanosecond, "")
 		return
 	}
+
+	var latitudeHundredths int
+	var longitudeHundredths int
+	var areaLocation string
+
+	latitudeHundredths,
+		longitudeHundredths,
+		areaLocation,
+		byteCount,
+		err = decodeTimezone(src[bytesDecoded:])
 	bytesDecoded += byteCount
+	if err != nil {
+		return
+	}
+
+	if len(areaLocation) > 0 {
+		time, err = NewTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation)
+	} else {
+		time, err = NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
+	}
 
 	return
 }
 
 // Get the number of bytes that would be required to encode this time value.
 func EncodedSize(time *Time) int {
-	switch time.TimeIs {
+	switch time.TimeType {
 	case TypeDate:
 		return encodedSizeDate(time)
 	case TypeTime:
@@ -196,7 +227,7 @@ func EncodedSize(time *Time) int {
 	case TypeTimestamp:
 		return encodedSizeTimestamp(time)
 	default:
-		panic(fmt.Errorf("%v: Unknown time type", time.TimeIs))
+		panic(fmt.Errorf("%v: Unknown time type", time.TimeType))
 	}
 }
 
@@ -205,7 +236,7 @@ func EncodedSize(time *Time) int {
 // Returns isComplete=true if there was enough room in dst.
 // Returns an error if something went wrong other than there not being enough room.
 func Encode(time *Time, dst []byte) (bytesEncoded int, isComplete bool) {
-	switch time.TimeIs {
+	switch time.TimeType {
 	case TypeDate:
 		bytesEncoded, isComplete = encodeDate(time, dst)
 		return
@@ -214,7 +245,7 @@ func Encode(time *Time, dst []byte) (bytesEncoded int, isComplete bool) {
 	case TypeTimestamp:
 		return encodeTimestamp(time, dst)
 	default:
-		panic(fmt.Errorf("%v: Unknown time type", time.TimeIs))
+		panic(fmt.Errorf("%v: Unknown time type", time.TimeType))
 	}
 }
 
@@ -261,87 +292,6 @@ var yearLowBitCountsTimestamp = [...]int{3, 1, 7, 5}
 var subsecMultipliers = [...]int{1, 1000000, 1000, 1}
 var baseByteCountsTime = [...]int{3, 4, 5, 7}
 var baseByteCountsTimestamp = [...]int{4, 5, 7, 8}
-
-var abbrevToTimezone = map[rune]string{
-	'F': "Africa",
-	'M': "America",
-	'N': "Antarctica",
-	'R': "Arctic",
-	'S': "Asia",
-	'T': "Atlantic",
-	'U': "Australia",
-	'C': "Etc",
-	'E': "Europe",
-	'I': "Indian",
-	'P': "Pacific",
-	'Z': "Etc/UTC",
-	'L': "Local",
-}
-
-var timezoneToAbbrev = map[string]string{
-	"Africa":     "F",
-	"America":    "M",
-	"Antarctica": "N",
-	"Arctic":     "R",
-	"Asia":       "S",
-	"Atlantic":   "T",
-	"Australia":  "U",
-	"Etc":        "C",
-	"Europe":     "E",
-	"Indian":     "I",
-	"Pacific":    "P",
-	"Etc/UTC":    "Z",
-	"Local":      "L",
-}
-
-func getFullTimezoneString(tz string) string {
-	if len(tz) == 0 {
-		return tz
-	}
-	firstChar := rune(tz[0])
-
-	if len(tz) == 1 {
-		switch firstChar {
-		case 'L':
-			return "Local"
-		case 'Z':
-			return "Etc/UTC"
-		}
-		return tz
-	}
-	if tz[1] != '/' {
-		return tz
-	}
-
-	remainder := tz[1:]
-	if value, exists := abbrevToTimezone[firstChar]; exists {
-		return value + remainder
-	}
-	return tz
-}
-
-func getAbbreviatedTimezoneString(tz string) string {
-	if len(tz) == 0 {
-		return "Z"
-	}
-
-	if tz == "Local" {
-		return "L"
-	}
-
-	index := strings.Index(tz, "/")
-	if index < 1 {
-		return tz
-	}
-
-	area := tz[:index]
-
-	if value, exists := timezoneToAbbrev[area]; exists {
-		return value + tz[index:]
-	}
-
-	return tz
-}
 
 func getSubsecondMagnitude(nanosecond int) int {
 	if nanosecond == 0 {
@@ -427,24 +377,24 @@ func getYearGroupCount(encodedYear uint32, uncountedBits int) int {
 }
 
 func encodedSizeTimezone(time *Time) int {
-	switch time.TimezoneIs {
-	case TypeUTC:
+	switch time.TimezoneType {
+	case TypeZero:
 		return 0
-	case TypeAreaLocation:
-		return 1 + len(getAbbreviatedTimezoneString(time.AreaLocation))
+	case TypeAreaLocation, TypeLocal:
+		return 1 + len(time.ShortAreaLocation)
 	case TypeLatitudeLongitude:
 		return byteCountLatLong
 	default:
-		panic(fmt.Errorf("%v: Unknown timezone type", time.TimezoneIs))
+		panic(fmt.Errorf("%v: Unknown timezone type", time.TimezoneType))
 	}
 }
 
 func encodeTimezone(time *Time, dst []byte) (bytesEncoded int, isComplete bool) {
-	switch time.TimezoneIs {
-	case TypeUTC:
+	switch time.TimezoneType {
+	case TypeZero:
 		isComplete = true
-	case TypeAreaLocation:
-		areaLocation := getAbbreviatedTimezoneString(time.AreaLocation)
+	case TypeAreaLocation, TypeLocal:
+		areaLocation := time.ShortAreaLocation
 		bytesEncoded = len(areaLocation) + 1
 		if len(dst) < bytesEncoded {
 			return
@@ -462,45 +412,43 @@ func encodeTimezone(time *Time, dst []byte) (bytesEncoded int, isComplete bool) 
 		encode32LE(uint32(latLong), dst)
 		isComplete = true
 	default:
-		panic(fmt.Errorf("%v: Unknown timezone type", time.TimezoneIs))
+		panic(fmt.Errorf("%v: Unknown timezone type", time.TimezoneType))
 	}
 	return
 }
 
-func decodeTimezone(src []byte, time *Time, hasTimezone bool) (bytesDecoded int, isComplete bool) {
-	if !hasTimezone {
-		time.TimezoneIs = TypeUTC
-		isComplete = true
-		return
-	}
+func decodeTimezone(src []byte) (
+	latitudeHundredths int,
+	longitudeHundredths int,
+	areaLocation string,
+	bytesDecoded int,
+	err error) {
 
 	if len(src) == 0 {
+		err = ErrorIncomplete
 		return
 	}
 
 	if src[0]&maskLatLong != 0 {
-		time.TimezoneIs = TypeLatitudeLongitude
 		bytesDecoded = byteCountLatLong
 		if bytesDecoded > len(src) {
+			err = ErrorIncomplete
 			return
 		}
 		latLong := decode32LE(src)
-		time.LongitudeHundredths = int16(int32(latLong) >> shiftLongitude)
-		time.LatitudeHundredths = int16((int32(latLong<<16) >> 17) & maskLatitude)
-		isComplete = true
+		longitudeHundredths = int(int32(latLong) >> shiftLongitude)
+		latitudeHundredths = int((int32(latLong<<16) >> 17) & maskLatitude)
 		return
 	}
 
-	time.TimezoneIs = TypeAreaLocation
 	stringLength := int(src[0] >> 1)
 	bytesDecoded = stringLength + 1
 	if bytesDecoded > len(src) {
+		err = ErrorIncomplete
 		return
 	}
 
-	areaLocation := string(src[1:bytesDecoded])
-	time.AreaLocation = getFullTimezoneString(areaLocation)
-	isComplete = true
+	areaLocation = string(src[1:bytesDecoded])
 	return
 }
 
@@ -550,7 +498,7 @@ func encodeTime(time *Time, dst []byte) (bytesEncoded int, isComplete bool) {
 	accumulator = (accumulator << uint(sizeSubsecond*magnitude)) | uint64(subsecond)
 	accumulator = (accumulator << uint(sizeMagnitude)) | uint64(magnitude)
 	accumulator <<= 1
-	if time.TimezoneIs != TypeUTC {
+	if time.TimezoneType != TypeZero {
 		accumulator |= 1
 	}
 
@@ -590,7 +538,7 @@ func encodeTimestamp(time *Time, dst []byte) (bytesEncoded int, isComplete bool)
 	accumulator = (accumulator << uint(sizeSubsecond*magnitude)) | uint64(subsecond)
 	accumulator = (accumulator << uint(sizeMagnitude)) | uint64(magnitude)
 	accumulator <<= 1
-	if time.TimezoneIs != TypeUTC {
+	if time.TimezoneType != TypeZero {
 		accumulator |= 1
 	}
 

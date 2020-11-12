@@ -12,7 +12,10 @@ func demonstrateEncode() {
 		// TODO: Handle error
 	}
 	goDate := time.Date(2020, time.Month(8), 30, 15, 33, 14, 19577323, location)
-	compactDate := AsCompactTime(goDate)
+	compactDate, err := AsCompactTime(goDate)
+	if err != nil {
+		// TODO: Handle error
+	}
 	buffer := make([]byte, EncodedSize(compactDate))
 	encodedCount, ok := Encode(compactDate, buffer)
 	if !ok {
@@ -27,9 +30,6 @@ func demonstrateDecode() {
 	compactDate, decodedCount, err := DecodeTimestamp(buffer)
 	if err != nil {
 		// TODO: Check if is compact_time.ErrorIncomplete or something else
-	}
-	if err := compactDate.Validate(); err != nil {
-		// TODO: Handle error
 	}
 	goDate, err := compactDate.AsGoTime()
 	if err != nil {

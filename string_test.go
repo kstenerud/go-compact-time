@@ -26,7 +26,10 @@ import (
 
 func TestStringRepresentation(t *testing.T) {
 	expected := "2020-01-15/13:41:00.000599"
-	v := NewTimestamp(2020, 1, 15, 13, 41, 0, 599000, "")
+	v, err := NewTimestamp(2020, 1, 15, 13, 41, 0, 599000, "")
+	if err != nil {
+		t.Error(err)
+	}
 	actual := v.String()
 	if actual != expected {
 		t.Errorf("Expected %v but got %v", expected, actual)

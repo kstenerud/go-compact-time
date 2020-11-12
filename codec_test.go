@@ -22,6 +22,7 @@ package compact_time
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,7 +31,10 @@ import (
 
 func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expected []byte) {
 	actual := make([]byte, len(expected))
-	expectedDate := NewDate(year, month, day)
+	expectedDate, err := NewDate(year, month, day)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
 	actualSize := EncodedSize(expectedDate)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
@@ -74,7 +78,10 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 			return
 		}
 	}
-	expectedTime := NewTime(hour, minute, second, nanosecond, timezone)
+	expectedTime, err := NewTime(hour, minute, second, nanosecond, timezone)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
 	actualSize := EncodedSize(expectedTime)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
@@ -94,9 +101,9 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 		return
 	}
 
-	actualTime, decodedCount, ok := DecodeTime(expected)
-	if !ok {
-		t.Errorf("Not enough data to decode time at %v", decodedCount)
+	actualTime, decodedCount, err := DecodeTime(expected)
+	if err != nil {
+		t.Error(err)
 		return
 	}
 	if decodedCount != len(expected) {
@@ -109,16 +116,52 @@ func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nano
 	}
 }
 
-func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hour int, minute int, second int, nanosecond int, timezone string, expected []byte) {
+func assertTimestampEncode(t *testing.T, year int, month int, day int, hour int, minute int, second int, nanosecond int, timezone string, expected []byte) {
 	actual := make([]byte, len(expected))
-	if len(timezone) > 0 {
+	if len(timezone) > 0 && timezone != "Z" && timezone != "Zero" && timezone != "L" && timezone != "Local" {
 		_, err := time.LoadLocation(timezone)
 		if err != nil {
 			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
 			return
 		}
 	}
-	expectedTimestamp := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
+	expectedTimestamp, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
+	actualSize := EncodedSize(expectedTimestamp)
+	if actualSize != len(expected) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
+		return
+	}
+	encodedCount, ok := Encode(expectedTimestamp, actual)
+	if !ok {
+		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
+		return
+	}
+	if encodedCount != len(expected) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
+		return
+	}
+	if !bytes.Equal(expected, actual) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expected), describe.D(actual))
+		return
+	}
+}
+
+func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hour int, minute int, second int, nanosecond int, timezone string, expected []byte) {
+	actual := make([]byte, len(expected))
+	if len(timezone) > 0 && timezone != "Z" && timezone != "Zero" && timezone != "L" && timezone != "Local" {
+		_, err := time.LoadLocation(timezone)
+		if err != nil {
+			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
+			return
+		}
+	}
+	expectedTimestamp, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
 	actualSize := EncodedSize(expectedTimestamp)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
@@ -155,7 +198,10 @@ func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hou
 
 func assertTimestampLatLongEncodeDecode(t *testing.T, year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int, expected []byte) {
 	actual := make([]byte, len(expected))
-	expectedTimestamp := NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
+	expectedTimestamp, err := NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
 	actualSize := encodedSizeTimestamp(expectedTimestamp)
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
@@ -228,4 +274,36 @@ func TestTimestamp(t *testing.T) {
 
 	// August 31, 3190, 00:54:47.394129, location 59.94, 10.71
 	assertTimestampLatLongEncodeDecode(t, 3190, 8, 31, 0, 54, 47, 394129000, 5994, 1071, []byte{0x8d, 0x1c, 0xb0, 0xd7, 0x06, 0x1f, 0x99, 0x12, 0xd5, 0x2e, 0x2f, 0x04})
+
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "Local", []byte{0x01, 0x00, 0x10, 0x02, 0x00, 0x02, 0x4c})
+}
+
+func TestTimestampUTC(t *testing.T) {
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/GMT", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/GMT+0", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/GMT-0", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/GMT0", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/Greenwich", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/UCT", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/Universal", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/UTC", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Etc/Zulu", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Factory", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "GMT", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "GMT+0", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "GMT-0", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "GMT0", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Greenwich", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "UCT", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Universal", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "UTC", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Zulu", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Z", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Zero", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+}
+
+func TestTimestampLocal(t *testing.T) {
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "Local", []byte{0x01, 0x00, 0x10, 0x02, 0x00, 0x02, 0x4c})
+	assertTimestampEncode(t, 2000, 1, 1, 0, 0, 0, 0, "L", []byte{0x01, 0x00, 0x10, 0x02, 0x00, 0x02, 0x4c})
 }

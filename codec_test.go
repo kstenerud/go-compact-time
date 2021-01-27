@@ -24,174 +24,338 @@ import (
 	"bytes"
 	"fmt"
 	"testing"
-	"time"
+	gotime "time"
 
 	"github.com/kstenerud/go-describe"
 )
 
-func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expected []byte) {
-	actual := make([]byte, len(expected))
+func isEqualGoTime(a gotime.Time, b gotime.Time) bool {
+	return a.Year() == b.Year() &&
+		a.Month() == b.Month() &&
+		a.Day() == b.Day() &&
+		a.Hour() == b.Hour() &&
+		a.Minute() == b.Minute() &&
+		a.Second() == b.Second() &&
+		a.Location().String() == b.Location().String()
+}
+
+func assertDateEncodeDecode(t *testing.T, year int, month int, day int, expectedBytes []byte) {
+	actualBytes := make([]byte, len(expectedBytes))
 	expectedDate, err := NewDate(year, month, day)
 	if err != nil {
 		panic(fmt.Errorf("BUG: Unexpected error %v", err))
 	}
-	actualSize := EncodedSize(expectedDate)
-	if actualSize != len(expected) {
-		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
+	actualSize := expectedDate.EncodedSize()
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
 		return
 	}
-	encodedCount, ok := Encode(expectedDate, actual)
+	encodedCount, ok := expectedDate.Encode(actualBytes)
 	if !ok {
 		t.Errorf("Not enough room to encode date %v at %v", expectedDate, encodedCount)
 		return
 	}
-	if encodedCount != len(expected) {
-		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
 		return
 	}
-	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expected), describe.D(actual))
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
 		return
 	}
 
-	actualDate, decodedCount, err := DecodeDate(expected)
+	actualDate, decodedCount, err := DecodeDate(expectedBytes)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if decodedCount != len(expected) {
-		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)
+	if decodedCount != len(expectedBytes) {
+		t.Errorf("Expected decoded byte count of %v but got %v", len(expectedBytes), decodedCount)
 		return
 	}
-	if *actualDate != *expectedDate {
+	if actualDate != expectedDate {
 		t.Errorf("Expected decoded date of [%v] but got [%v]", expectedDate, actualDate)
+		return
+	}
+
+	expectedGoDate := gotime.Date(year, gotime.Month(month), day, 0, 0, 0, 0, gotime.UTC)
+	actualSize = EncodedSizeGoDate(expectedGoDate)
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
+		return
+	}
+
+	encodedCount, ok = EncodeGoDate(expectedGoDate, actualBytes)
+	if !ok {
+		t.Errorf("Not enough room to encode date %v at %v", expectedGoDate, encodedCount)
+		return
+	}
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
+		return
+	}
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
+		return
+	}
+
+	var actualGoDate gotime.Time
+	actualGoDate, decodedCount, err = DecodeGoDate(expectedBytes)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if decodedCount != len(expectedBytes) {
+		t.Errorf("Expected decoded byte count of %v but got %v", len(expectedBytes), decodedCount)
+		return
+	}
+	if actualGoDate != expectedGoDate {
+		t.Errorf("Expected decoded go date of [%v] but got [%v]", expectedGoDate, actualGoDate)
 		return
 	}
 }
 
-func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int, nanosecond int, timezone string, expected []byte) {
-	actual := make([]byte, len(expected))
+func assertTimeEncodeDecode(t *testing.T, hour int, minute int, second int,
+	nanosecond int, timezone string, expectedBytes []byte) {
+	actualBytes := make([]byte, len(expectedBytes))
+	var goTZ = gotime.UTC
+
 	if len(timezone) > 0 {
-		_, err := time.LoadLocation(timezone)
+		// shortTZ, longTZ = splitAreaLocation(timezone)
+		var err error
+		goTZ, err = gotime.LoadLocation(timezone)
 		if err != nil {
 			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
 			return
 		}
 	}
+
 	expectedTime, err := NewTime(hour, minute, second, nanosecond, timezone)
 	if err != nil {
 		panic(fmt.Errorf("BUG: Unexpected error %v", err))
 	}
-	actualSize := EncodedSize(expectedTime)
-	if actualSize != len(expected) {
-		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
+	actualSize := expectedTime.EncodedSize()
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
 		return
 	}
-	encodedCount, ok := Encode(expectedTime, actual)
+	encodedCount, ok := expectedTime.Encode(actualBytes)
 	if !ok {
 		t.Errorf("Not enough room to encode %v at %v", expectedTime, encodedCount)
 		return
 	}
-	if encodedCount != len(expected) {
-		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
 		return
 	}
-	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expected), describe.D(actual))
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
 		return
 	}
 
-	actualTime, decodedCount, err := DecodeTime(expected)
+	actualTime, decodedCount, err := DecodeTime(expectedBytes)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if decodedCount != len(expected) {
-		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)
+	if decodedCount != len(expectedBytes) {
+		t.Errorf("Expected decoded byte count of %v but got %v", len(expectedBytes), decodedCount)
 		return
 	}
-	if *actualTime != *expectedTime {
+	if actualTime != expectedTime {
 		t.Errorf("Expected decoded date of %v but got %v", expectedTime, actualTime)
 		return
 	}
-}
 
-func assertTimestampEncode(t *testing.T, year int, month int, day int, hour int, minute int, second int, nanosecond int, timezone string, expected []byte) {
-	actual := make([]byte, len(expected))
-	if len(timezone) > 0 && timezone != "Z" && timezone != "Zero" && timezone != "L" && timezone != "Local" {
-		_, err := time.LoadLocation(timezone)
-		if err != nil {
-			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
-			return
-		}
-	}
-	expectedTimestamp, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	actualSize := EncodedSize(expectedTimestamp)
-	if actualSize != len(expected) {
-		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
+	expectedGoTime := gotime.Date(0, 0, 0, hour, minute, second, nanosecond, goTZ)
+	actualSize = EncodedSizeGoTime(expectedGoTime)
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
 		return
 	}
-	encodedCount, ok := Encode(expectedTimestamp, actual)
+	encodedCount, ok = EncodeGoTime(expectedGoTime, actualBytes)
 	if !ok {
-		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
+		t.Errorf("Not enough room to encode %v at %v", expectedGoTime, encodedCount)
 		return
 	}
-	if encodedCount != len(expected) {
-		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
 		return
 	}
-	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expected), describe.D(actual))
-		return
-	}
-}
-
-func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hour int, minute int, second int, nanosecond int, timezone string, expected []byte) {
-	actual := make([]byte, len(expected))
-	if len(timezone) > 0 && timezone != "Z" && timezone != "Zero" && timezone != "L" && timezone != "Local" {
-		_, err := time.LoadLocation(timezone)
-		if err != nil {
-			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
-			return
-		}
-	}
-	expectedTimestamp, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	actualSize := EncodedSize(expectedTimestamp)
-	if actualSize != len(expected) {
-		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
-		return
-	}
-	encodedCount, ok := Encode(expectedTimestamp, actual)
-	if !ok {
-		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
-		return
-	}
-	if encodedCount != len(expected) {
-		t.Errorf("Expected encoded byte count of %v but got %v", len(expected), encodedCount)
-		return
-	}
-	if !bytes.Equal(expected, actual) {
-		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expected), describe.D(actual))
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
 		return
 	}
 
-	actualTimestamp, decodedCount, err := DecodeTimestamp(expected)
+	var actualGoTime gotime.Time
+	actualGoTime, decodedCount, err = DecodeGoTime(expectedBytes)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if decodedCount != len(expected) {
-		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)
+	if decodedCount != len(expectedBytes) {
+		t.Errorf("Expected decoded byte count of %v but got %v", len(expectedBytes), decodedCount)
 		return
 	}
-	if *actualTimestamp != *expectedTimestamp {
+	if !isEqualGoTime(actualGoTime, expectedGoTime) {
+		t.Errorf("Expected decoded go date of %v but got %v", expectedGoTime, actualGoTime)
+		return
+	}
+}
+
+func assertTimestampEncode(t *testing.T, year int, month int, day int, hour int,
+	minute int, second int, nanosecond int, timezone string, expectedBytes []byte) {
+	actualBytes := make([]byte, len(expectedBytes))
+	isLocalTZ := timezone == "L" || timezone == "Local"
+	isZeroTZ := timezone == "Z" || timezone == "Zero"
+
+	var goTZ = gotime.UTC
+	if len(timezone) > 0 && !isLocalTZ && !isZeroTZ {
+		var err error
+		goTZ, err = gotime.LoadLocation(timezone)
+		if err != nil {
+			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
+			return
+		}
+	}
+
+	expectedTimestamp, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
+	actualSize := expectedTimestamp.EncodedSize()
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
+		return
+	}
+	encodedCount, ok := expectedTimestamp.Encode(actualBytes)
+	if !ok {
+		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
+		return
+	}
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
+		return
+	}
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
+		return
+	}
+
+	if isLocalTZ {
+		return
+	}
+
+	expectedGoTimestamp := gotime.Date(year, gotime.Month(month), day, hour, minute, second, nanosecond, goTZ)
+	actualSize = EncodedSizeGoTimestamp(expectedGoTimestamp)
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
+		return
+	}
+	encodedCount, ok = EncodeGoTimestamp(expectedGoTimestamp, actualBytes)
+	if !ok {
+		t.Errorf("Not enough room to encode timestamp %v at %v", expectedGoTimestamp, encodedCount)
+		return
+	}
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
+		return
+	}
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
+		return
+	}
+}
+
+func assertTimestampEncodeDecode(t *testing.T, year int, month int, day int, hour int,
+	minute int, second int, nanosecond int, timezone string, expectedBytes []byte) {
+	actualBytes := make([]byte, len(expectedBytes))
+	isLocalTZ := timezone == "L" || timezone == "Local"
+	isZeroTZ := timezone == "Z" || timezone == "Zero"
+
+	var goTZ = gotime.UTC
+	if len(timezone) > 0 && !isLocalTZ && !isZeroTZ {
+		var err error
+		goTZ, err = gotime.LoadLocation(timezone)
+		if err != nil {
+			t.Errorf("BUG IN TEST CODE. Error loading location %v: %v", timezone, err)
+			return
+		}
+	}
+
+	expectedTimestamp, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, timezone)
+	if err != nil {
+		panic(fmt.Errorf("BUG: Unexpected error %v", err))
+	}
+	actualSize := expectedTimestamp.EncodedSize()
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
+		return
+	}
+	encodedCount, ok := expectedTimestamp.Encode(actualBytes)
+	if !ok {
+		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
+		return
+	}
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
+		return
+	}
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
+		return
+	}
+
+	actualTimestamp, decodedCount, err := DecodeTimestamp(expectedBytes)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if decodedCount != len(expectedBytes) {
+		t.Errorf("Expected decoded byte count of %v but got %v", len(expectedBytes), decodedCount)
+		return
+	}
+	if actualTimestamp != expectedTimestamp {
 		t.Errorf("Expected decoded date of [%v] but got [%v]", expectedTimestamp, actualTimestamp)
+		return
+	}
+
+	if isLocalTZ {
+		return
+	}
+
+	expectedGoTimestamp := gotime.Date(year, gotime.Month(month), day, hour, minute, second, nanosecond, goTZ)
+	actualSize = EncodedSizeGoTimestamp(expectedGoTimestamp)
+	if actualSize != len(expectedBytes) {
+		t.Errorf("Expected encoded size of %v but got %v", len(expectedBytes), actualSize)
+		return
+	}
+	encodedCount, ok = EncodeGoTimestamp(expectedGoTimestamp, actualBytes)
+	if !ok {
+		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
+		return
+	}
+	if encodedCount != len(expectedBytes) {
+		t.Errorf("Expected encoded byte count of %v but got %v", len(expectedBytes), encodedCount)
+		return
+	}
+	if !bytes.Equal(expectedBytes, actualBytes) {
+		t.Errorf("Expected encoded bytes %v but got %v", describe.D(expectedBytes), describe.D(actualBytes))
+		return
+	}
+
+	var actualGoTimestamp gotime.Time
+	actualGoTimestamp, decodedCount, err = DecodeGoTimestamp(expectedBytes)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if decodedCount != len(expectedBytes) {
+		t.Errorf("Expected decoded byte count of %v but got %v", len(expectedBytes), decodedCount)
+		return
+	}
+	if !isEqualGoTime(expectedGoTimestamp, actualGoTimestamp) {
+		t.Errorf("Expected decoded date of [%v] but got [%v]", expectedGoTimestamp, actualGoTimestamp)
 		return
 	}
 }
@@ -202,12 +366,12 @@ func assertTimestampLatLongEncodeDecode(t *testing.T, year, month, day, hour, mi
 	if err != nil {
 		panic(fmt.Errorf("BUG: Unexpected error %v", err))
 	}
-	actualSize := encodedSizeTimestamp(expectedTimestamp)
+	actualSize := expectedTimestamp.EncodedSize()
 	if actualSize != len(expected) {
 		t.Errorf("Expected encoded size of %v but got %v", len(expected), actualSize)
 		return
 	}
-	encodedCount, ok := encodeTimestamp(expectedTimestamp, actual)
+	encodedCount, ok := expectedTimestamp.encodeTimestamp(actual)
 	if !ok {
 		t.Errorf("Not enough room to encode timestamp %v at %v", expectedTimestamp, encodedCount)
 		return
@@ -230,7 +394,7 @@ func assertTimestampLatLongEncodeDecode(t *testing.T, year, month, day, hour, mi
 		t.Errorf("Expected decoded byte count of %v but got %v", len(expected), decodedCount)
 		return
 	}
-	if *actualTimestamp != *expectedTimestamp {
+	if actualTimestamp != expectedTimestamp {
 		t.Errorf("Expected decoded date of [%v] but got [%v]", expectedTimestamp, actualTimestamp)
 		return
 	}

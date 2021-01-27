@@ -26,26 +26,6 @@ import (
 	gotime "time"
 )
 
-const (
-	monthMin      = 1
-	monthMax      = 12
-	dayMin        = 1
-	hourMin       = 0
-	hourMax       = 23
-	minuteMin     = 0
-	minuteMax     = 59
-	secondMin     = 0
-	secondMax     = 60
-	nanosecondMin = 0
-	nanosecondMax = 999999999
-	latitudeMin   = -9000
-	latitudeMax   = 9000
-	longitudeMin  = -18000
-	longitudeMax  = 18000
-)
-
-var dayMax = [...]uint8{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-
 type TimeType uint8
 
 const (
@@ -79,137 +59,78 @@ type Time struct {
 	ShortAreaLocation   string
 }
 
-func NewDate(year, month, day int) (*Time, error) {
-	this := new(Time)
-	if err := this.InitDate(year, month, day); err != nil {
-		return nil, err
-	}
-	return this, nil
+func NewDate(year, month, day int) (Time, error) {
+	this := Time{}
+	err := this.InitDate(year, month, day)
+	return this, err
 }
 
 func (this *Time) InitDate(year, month, day int) error {
-	this.Year = year
-	this.Month = uint8(month)
-	this.Day = uint8(day)
-	this.TimeType = TypeDate
-	return this.validateDate()
+	this.initDateFields(year, month, day)
+	return this.validateDateFields()
 }
 
 // Create a new time. If areaLocation is empty, UTC is assumed. areaLocation is not validated
 // against any timezone databases.
-func NewTime(hour, minute, second, nanosecond int, areaLocation string) (*Time, error) {
-	this := new(Time)
-	if err := this.InitTime(hour, minute, second, nanosecond, areaLocation); err != nil {
-		return nil, err
-	}
-	return this, nil
+func NewTime(hour, minute, second, nanosecond int, areaLocation string) (Time, error) {
+	this := Time{}
+	err := this.InitTime(hour, minute, second, nanosecond, areaLocation)
+	return this, err
 }
 
 // Init a time. If areaLocation is empty, UTC is assumed. areaLocation is not validated
 // against any timezone databases.
 func (this *Time) InitTime(hour, minute, second, nanosecond int, areaLocation string) error {
-	this.initTimeCommon(hour, minute, second, nanosecond)
-	this.AreaLocation = areaLocation
-	switch areaLocation {
-	case "", "Z", "Zero":
-		this.TimezoneType = TypeZero
-		this.AreaLocation = "Etc/UTC"
-		this.ShortAreaLocation = "Z"
-	case "Etc/GMT", "Etc/GMT+0", "Etc/GMT-0", "Etc/GMT0", "Etc/Greenwich",
-		"Etc/UCT", "Etc/Universal", "Etc/UTC", "Etc/Zulu", "Factory", "GMT",
-		"GMT+0", "GMT-0", "GMT0", "Greenwich", "UCT", "Universal", "UTC", "Zulu":
-		this.TimezoneType = TypeZero
-		this.ShortAreaLocation = "Z"
-	case "L", "Local":
-		this.TimezoneType = TypeLocal
-		this.AreaLocation = "Local"
-		this.ShortAreaLocation = "L"
-	default:
-		this.TimezoneType = TypeAreaLocation
-		tzPair := strings.SplitN(areaLocation, "/", 2)
-		if len(tzPair) > 1 {
-			area := tzPair[0]
-			location := tzPair[1]
-			if len(area) == 1 {
-				this.ShortAreaLocation = areaLocation
-				if longArea := shortAreaToArea[area]; longArea != "" {
-					this.AreaLocation = longArea + "/" + location
-				} else {
-					this.AreaLocation = areaLocation
-				}
-			} else {
-				if shortArea := areaToShortArea[area]; shortArea != "" {
-					this.ShortAreaLocation = shortArea + "/" + location
-				} else {
-					this.ShortAreaLocation = areaLocation
-				}
-			}
-		} else {
-			this.ShortAreaLocation = areaLocation
-		}
-	}
-	return this.validateTime()
+	shortAreaLocation, longAreaLocation := splitAreaLocation(areaLocation)
+	return this.initTimeAreaLocation(hour, minute, second, nanosecond, shortAreaLocation, longAreaLocation)
 }
 
-func NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) (*Time, error) {
-	this := new(Time)
-	if err := this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths); err != nil {
-		return nil, err
-	}
-	return this, nil
+func NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) (Time, error) {
+	this := Time{}
+	err := this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
+	return this, err
 }
 
 func (this *Time) InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) error {
-	this.initTimeCommon(hour, minute, second, nanosecond)
-	this.LatitudeHundredths = int16(latitudeHundredths)
-	this.LongitudeHundredths = int16(longitudeHundredths)
-	this.TimezoneType = TypeLatitudeLongitude
-	return this.validateTime()
+	this.initTimeFields(hour, minute, second, nanosecond)
+	this.initTZLatLong(latitudeHundredths, longitudeHundredths)
+	return this.validateTimeFields()
 }
 
 // Create a new timestamp. If areaLocation is empty, UTC is assumed. areaLocation
 // is not validated against any timezone databases.
-func NewTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) (*Time, error) {
-	this := new(Time)
-	if err := this.InitTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation); err != nil {
-		return nil, err
-	}
-	return this, nil
+func NewTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) (Time, error) {
+	this := Time{}
+	err := this.InitTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation)
+	return this, err
 }
 
 // Init a timestamp. If areaLocation is empty, UTC is assumed. areaLocation is
 // not validated against any timezone databases.
 func (this *Time) InitTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) error {
-	if err := this.InitDate(year, month, day); err != nil {
-		return err
-	}
-	if err := this.InitTime(hour, minute, second, nanosecond, areaLocation); err != nil {
-		return err
-	}
-	this.TimeType = TypeTimestamp
-	return nil
+	shortAreaLocation, longAreaLocation := splitAreaLocation(areaLocation)
+	return this.initTimestampAreaLocation(year, month, day, hour, minute, second, nanosecond, shortAreaLocation, longAreaLocation)
 }
 
-func NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) (*Time, error) {
-	this := new(Time)
-	if err := this.InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths); err != nil {
-		return nil, err
-	}
-	return this, nil
+func NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) (Time, error) {
+	this := Time{}
+	err := this.InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
+	return this, err
 }
 
 func (this *Time) InitTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) error {
-	if err := this.InitDate(year, month, day); err != nil {
-		return err
-	}
-	if err := this.InitTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths); err != nil {
-		return err
-	}
+	this.initDateFields(year, month, day)
+	this.initTimeFields(hour, minute, second, nanosecond)
+	this.initTZLatLong(latitudeHundredths, longitudeHundredths)
 	this.TimeType = TypeTimestamp
-	return nil
+
+	if err := this.validateDateFields(); err != nil {
+		return err
+	}
+	return this.validateTimeFields()
 }
 
-func AsCompactTime(src gotime.Time) (*Time, error) {
+func AsCompactTime(src gotime.Time) (Time, error) {
 	locationStr := src.Location().String()
 	if src.Location() == gotime.Local {
 		locationStr = "Local"
@@ -251,7 +172,59 @@ func (this *Time) AsGoTime() (result gotime.Time, err error) {
 	return
 }
 
-func (this *Time) initTimeCommon(hour, minute, second, nanosecond int) {
+func (this *Time) String() string {
+	switch this.TimeType {
+	case TypeDate:
+		return this.formatDate()
+	case TypeTime:
+		return this.formatTime()
+	case TypeTimestamp:
+		return this.formatTimestamp()
+	default:
+		return fmt.Sprintf("Error: %v: Unknown time type", this.TimeType)
+	}
+}
+
+// =============================================================================
+
+func newTimeAreaLocation(hour, minute, second, nanosecond int, shortAreaLocation, longAreaLocation string) (Time, error) {
+	this := Time{}
+	err := this.initTimeAreaLocation(hour, minute, second, nanosecond, shortAreaLocation, longAreaLocation)
+	return this, err
+}
+
+func (this *Time) initTimeAreaLocation(hour, minute, second, nanosecond int, shortAreaLocation, longAreaLocation string) error {
+	this.initTimeFields(hour, minute, second, nanosecond)
+	this.initTZAreaLocation(shortAreaLocation, longAreaLocation)
+	return this.validateTimeFields()
+}
+
+func newTimestampAreaLocation(year, month, day, hour, minute, second, nanosecond int, shortAreaLocation, longAreaLocation string) (Time, error) {
+	this := Time{}
+	err := this.initTimestampAreaLocation(year, month, day, hour, minute, second, nanosecond, shortAreaLocation, longAreaLocation)
+	return this, err
+}
+
+func (this *Time) initTimestampAreaLocation(year, month, day, hour, minute, second, nanosecond int, shortAreaLocation, longAreaLocation string) error {
+	this.initDateFields(year, month, day)
+	this.initTimeFields(hour, minute, second, nanosecond)
+	this.initTZAreaLocation(shortAreaLocation, longAreaLocation)
+	this.TimeType = TypeTimestamp
+
+	if err := this.validateDateFields(); err != nil {
+		return err
+	}
+	return this.validateTimeFields()
+}
+
+func (this *Time) initDateFields(year, month, day int) {
+	this.Year = year
+	this.Month = uint8(month)
+	this.Day = uint8(day)
+	this.TimeType = TypeDate
+}
+
+func (this *Time) initTimeFields(hour, minute, second, nanosecond int) {
 	this.Hour = uint8(hour)
 	this.Minute = uint8(minute)
 	this.Second = uint8(second)
@@ -259,7 +232,27 @@ func (this *Time) initTimeCommon(hour, minute, second, nanosecond int) {
 	this.TimeType = TypeTime
 }
 
-func (this *Time) validateDate() error {
+func (this *Time) initTZAreaLocation(shortAreaLocation, longAreaLocation string) {
+	this.ShortAreaLocation = shortAreaLocation
+	this.AreaLocation = longAreaLocation
+	this.TimezoneType = getTZTypeFromShortAreaLocation(this.ShortAreaLocation)
+	switch this.ShortAreaLocation {
+	case "Z":
+		this.TimezoneType = TypeZero
+	case "L":
+		this.TimezoneType = TypeLocal
+	default:
+		this.TimezoneType = TypeAreaLocation
+	}
+}
+
+func (this *Time) initTZLatLong(latitudeHundredths, longitudeHundredths int) {
+	this.LatitudeHundredths = int16(latitudeHundredths)
+	this.LongitudeHundredths = int16(longitudeHundredths)
+	this.TimezoneType = TypeLatitudeLongitude
+}
+
+func (this *Time) validateDateFields() error {
 	if this.Year == 0 {
 		return fmt.Errorf("%v: Invalid year (must not be 0)", this.Year)
 	}
@@ -272,7 +265,7 @@ func (this *Time) validateDate() error {
 	return nil
 }
 
-func (this *Time) validateTime() error {
+func (this *Time) validateTimeFields() error {
 	if this.Hour < hourMin || this.Hour > hourMax {
 		return fmt.Errorf("%v: Invalid hour (must be %v to %v)", this.Hour, hourMin, hourMax)
 	}
@@ -285,7 +278,10 @@ func (this *Time) validateTime() error {
 	if this.Nanosecond < nanosecondMin || this.Nanosecond > nanosecondMax {
 		return fmt.Errorf("%v: Invalid nanosecond (must be %v to %v)", this.Nanosecond, nanosecondMin, nanosecondMax)
 	}
+	return this.validateTZFields()
+}
 
+func (this *Time) validateTZFields() error {
 	switch this.TimezoneType {
 	case TypeZero, TypeLocal:
 		return nil
@@ -304,19 +300,6 @@ func (this *Time) validateTime() error {
 		return nil
 	default:
 		return fmt.Errorf("%v: Unknown time zone type", this.TimezoneType)
-	}
-}
-
-func (this *Time) String() string {
-	switch this.TimeType {
-	case TypeDate:
-		return this.formatDate()
-	case TypeTime:
-		return this.formatTime()
-	case TypeTimestamp:
-		return this.formatTimestamp()
-	default:
-		return fmt.Sprintf("Error: %v: Unknown time type", this.TimeType)
 	}
 }
 
@@ -360,6 +343,54 @@ func (this *Time) formatTimezone() string {
 	}
 }
 
+func getTZTypeFromShortAreaLocation(shortAreaLocation string) TimezoneType {
+	switch shortAreaLocation {
+	case "Z":
+		return TypeZero
+	case "L":
+		return TypeLocal
+	default:
+		return TypeAreaLocation
+	}
+}
+
+func splitAreaLocation(areaLocation string) (shortAreaLocation, longAreaLocation string) {
+	switch areaLocation {
+	case "", "Z", "Zero":
+		return "Z", "Etc/UTC"
+	case "Etc/GMT", "Etc/GMT+0", "Etc/GMT-0", "Etc/GMT0", "Etc/Greenwich",
+		"Etc/UCT", "Etc/Universal", "Etc/UTC", "Etc/Zulu", "Factory", "GMT",
+		"GMT+0", "GMT-0", "GMT0", "Greenwich", "UCT", "Universal", "UTC", "Zulu":
+		return "Z", areaLocation
+	case "L", "Local":
+		return "L", "Local"
+	default:
+		longAreaLocation = areaLocation
+		tzPair := strings.SplitN(areaLocation, "/", 2)
+		if len(tzPair) > 1 {
+			area := tzPair[0]
+			location := tzPair[1]
+			if len(area) == 1 {
+				shortAreaLocation = areaLocation
+				if longArea := shortAreaToArea[area]; longArea != "" {
+					longAreaLocation = longArea + "/" + location
+				} else {
+					longAreaLocation = areaLocation
+				}
+			} else {
+				if shortArea := areaToShortArea[area]; shortArea != "" {
+					shortAreaLocation = shortArea + "/" + location
+				} else {
+					shortAreaLocation = areaLocation
+				}
+			}
+		} else {
+			shortAreaLocation = areaLocation
+		}
+		return
+	}
+}
+
 var shortAreaToArea = map[string]string{
 	"F": "Africa",
 	"M": "America",
@@ -391,3 +422,23 @@ var areaToShortArea = map[string]string{
 	"Local":      "L",
 	"Zero":       "Z",
 }
+
+const (
+	monthMin      = 1
+	monthMax      = 12
+	dayMin        = 1
+	hourMin       = 0
+	hourMax       = 23
+	minuteMin     = 0
+	minuteMax     = 59
+	secondMin     = 0
+	secondMax     = 60
+	nanosecondMin = 0
+	nanosecondMax = 999999999
+	latitudeMin   = -9000
+	latitudeMax   = 9000
+	longitudeMin  = -18000
+	longitudeMax  = 18000
+)
+
+var dayMax = [...]uint8{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}

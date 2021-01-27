@@ -16,8 +16,8 @@ func demonstrateEncode() {
 	if err != nil {
 		// TODO: Handle error
 	}
-	buffer := make([]byte, EncodedSize(compactDate))
-	encodedCount, ok := Encode(compactDate, buffer)
+	buffer := make([]byte, compactDate.EncodedSize())
+	encodedCount, ok := compactDate.Encode(buffer)
 	if !ok {
 		// TODO: Not enough room in buffer to encode
 	}

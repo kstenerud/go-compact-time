@@ -52,6 +52,7 @@ const baseSizeTime = sizeUtc + sizeMagnitude + sizeSecond + sizeMinute + sizeHou
 const baseSizeTimestamp = sizeMagnitude + sizeSecond + sizeMinute + sizeHour + sizeDay + sizeMonth
 
 const byteCountDate = 2
+const minByteCountDate = 3
 const byteCountLatLong = 4
 
 const maskLatLong = 1
@@ -73,6 +74,7 @@ var yearLowBitCountsTimestamp = [...]int{3, 1, 7, 5}
 var subsecMultipliers = [...]int{1, 1000000, 1000, 1}
 var baseByteCountsTime = [...]int{3, 4, 5, 7}
 var baseByteCountsTimestamp = [...]int{4, 5, 7, 8}
+var byteCountsZeroValue = [...]int{3, 3, 5}
 
 func bitMask(bitCount int) uint64 {
 	return uint64(1)<<uint(bitCount) - 1

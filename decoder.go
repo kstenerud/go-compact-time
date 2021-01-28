@@ -50,6 +50,10 @@ func DecodeDate(src []byte) (time Time, bytesDecoded int, err error) {
 	if err != nil {
 		return
 	}
+	if year == 2000 && month == 0 && day == 0 {
+		time = ZeroDate()
+		return
+	}
 	time, err = NewDate(year, month, day)
 	return
 }
@@ -79,17 +83,20 @@ func DecodeTime(src []byte) (time Time, bytesDecoded int, err error) {
 	var latitudeHundredths int
 	var longitudeHundredths int
 	var areaLocation string
-	var isLatLong bool
+	var tzType TimezoneType
 	hour, minute, second, nanosecond,
 		latitudeHundredths, longitudeHundredths,
-		areaLocation, isLatLong, bytesDecoded, err = decodeTimeFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(src)
 	if err != nil {
 		return
 	}
 
-	if isLatLong {
+	switch tzType {
+	case TypeZeroValue:
+		time = ZeroTime()
+	case TypeLatitudeLongitude:
 		time, err = NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	} else {
+	default:
 		time, err = NewTime(hour, minute, second, nanosecond, areaLocation)
 	}
 
@@ -104,14 +111,14 @@ func DecodeGoTime(src []byte) (time gotime.Time, bytesDecoded int, err error) {
 	var second int
 	var nanosecond int
 	var areaLocation string
-	var isLatLong bool
+	var tzType TimezoneType
 	hour, minute, second, nanosecond, _, _,
-		areaLocation, isLatLong, bytesDecoded, err = decodeTimeFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(src)
 	if err != nil {
 		return
 	}
 
-	if isLatLong {
+	if tzType == TypeLatitudeLongitude {
 		err = fmt.Errorf("Go time doesn't support latitude/longitude")
 		return
 	} else {
@@ -143,18 +150,21 @@ func DecodeTimestamp(src []byte) (time Time, bytesDecoded int, err error) {
 	var latitudeHundredths int
 	var longitudeHundredths int
 	var areaLocation string
-	var isLatLong bool
+	var tzType TimezoneType
 
 	year, month, day, hour, minute, second, nanosecond,
 		latitudeHundredths, longitudeHundredths,
-		areaLocation, isLatLong, bytesDecoded, err = decodeTimestampFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(src)
 	if err != nil {
 		return
 	}
 
-	if isLatLong {
+	switch tzType {
+	case TypeZeroValue:
+		time = ZeroTimestamp()
+	case TypeLatitudeLongitude:
 		time, err = NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	} else {
+	default:
 		time, err = NewTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation)
 	}
 	return
@@ -171,15 +181,15 @@ func DecodeGoTimestamp(src []byte) (time gotime.Time, bytesDecoded int, err erro
 	var second int
 	var nanosecond int
 	var areaLocation string
-	var isLatLong bool
+	var tzType TimezoneType
 
 	year, month, day, hour, minute, second, nanosecond, _, _,
-		areaLocation, isLatLong, bytesDecoded, err = decodeTimestampFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(src)
 	if err != nil {
 		return
 	}
 
-	if isLatLong {
+	if tzType == TypeLatitudeLongitude {
 		err = fmt.Errorf("Go time doesn't support latitude/longitude")
 		return
 	} else {
@@ -224,13 +234,8 @@ func decodeYear(encodedYear uint32) int {
 	return int(decodeZigzag32(uint32(encodedYear))) + yearBias
 }
 
-func decodeTimezone(src []byte) (
-	latitudeHundredths int,
-	longitudeHundredths int,
-	areaLocation string,
-	isLatLong bool,
-	bytesDecoded int,
-	err error) {
+func decodeTimezone(src []byte) (latitudeHundredths int, longitudeHundredths int,
+	areaLocation string, tzType TimezoneType, bytesDecoded int, err error) {
 
 	if len(src) == 0 {
 		err = ErrorIncomplete
@@ -246,7 +251,7 @@ func decodeTimezone(src []byte) (
 		latLong := decode32LE(src)
 		longitudeHundredths = int(int32(latLong) >> shiftLongitude)
 		latitudeHundredths = int((int32(latLong<<16) >> 17) & maskLatitude)
-		isLatLong = true
+		tzType = TypeLatitudeLongitude
 		return
 	}
 
@@ -258,12 +263,12 @@ func decodeTimezone(src []byte) (
 	}
 
 	areaLocation = string(src[1:bytesDecoded])
-	isLatLong = false
+	tzType = TypeAreaLocation
 	return
 }
 
 func decodeDateFields(src []byte) (year, month, day int, bytesDecoded int, err error) {
-	if len(src) < byteCountDate {
+	if len(src) < minByteCountDate {
 		err = ErrorIncomplete
 		return
 	}
@@ -293,7 +298,7 @@ func decodeDateFields(src []byte) (year, month, day int, bytesDecoded int, err e
 }
 
 func decodeTimeFields(src []byte) (hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int,
-	areaLocation string, isLatLong bool, bytesDecoded int, err error) {
+	areaLocation string, tzType TimezoneType, bytesDecoded int, err error) {
 	if len(src) == 0 {
 		err = ErrorIncomplete
 		return
@@ -322,8 +327,19 @@ func decodeTimeFields(src []byte) (hour, minute, second, nanosecond, latitudeHun
 	minute = int(accumulator & maskMinute)
 	accumulator >>= sizeMinute
 	hour = int(accumulator & maskHour)
+	accumulator >>= sizeHour
+
+	expectedReservedBits := reservedBitsTime[magnitude]
+	if accumulator != expectedReservedBits {
+		if accumulator == 0 {
+			tzType = TypeZeroValue
+			return
+		}
+		err = fmt.Errorf("Expected reserved bits %b but got %b", expectedReservedBits, accumulator)
+	}
 
 	if !hasTimezone {
+		tzType = TypeZero
 		return
 	}
 
@@ -332,7 +348,7 @@ func decodeTimeFields(src []byte) (hour, minute, second, nanosecond, latitudeHun
 	latitudeHundredths,
 		longitudeHundredths,
 		areaLocation,
-		isLatLong,
+		tzType,
 		byteCount,
 		err = decodeTimezone(src[bytesDecoded:])
 
@@ -341,7 +357,7 @@ func decodeTimeFields(src []byte) (hour, minute, second, nanosecond, latitudeHun
 }
 
 func decodeTimestampFields(src []byte) (year, month, day, hour, minute, second, nanosecond,
-	latitudeHundredths, longitudeHundredths int, areaLocation string, isLatLong bool,
+	latitudeHundredths, longitudeHundredths int, areaLocation string, tzType TimezoneType,
 	bytesDecoded int, err error) {
 
 	if len(src) == 0 {
@@ -396,17 +412,23 @@ func decodeTimestampFields(src []byte) (year, month, day, hour, minute, second, 
 	year = decodeYear(uint32(asUint))
 
 	if !hasTimezone {
-		// Done!
+		if year == 2000 && month == 0 && day == 0 {
+			tzType = TypeZeroValue
+			return
+		}
+		tzType = TypeZero
 		return
 	}
 
 	latitudeHundredths,
 		longitudeHundredths,
 		areaLocation,
-		isLatLong,
+		tzType,
 		byteCount,
 		err = decodeTimezone(src[bytesDecoded:])
 
 	bytesDecoded += byteCount
 	return
 }
+
+var reservedBitsTime = [...]uint64{0x0f, 0x03, 0x00, 0x3f}

@@ -39,6 +39,9 @@ import (
 
 // Get the number of bytes that would be required to encode this time value.
 func (this *Time) EncodedSize() int {
+	if this.IsZeroValue() {
+		return byteCountsZeroValue[this.TimeType]
+	}
 	switch this.TimeType {
 	case TypeDate:
 		return encodedSizeDate(this.Year)
@@ -69,10 +72,18 @@ func (this *Time) Encode(dst []byte) (bytesEncoded int, isComplete bool) {
 }
 
 func (this *Time) encodeDate(dst []byte) (bytesEncoded int, isComplete bool) {
+	if this.IsZeroValue() {
+		return encodeZeroDate(dst)
+	}
+
 	return encodeDate(this.Year, int(this.Month), int(this.Day), dst)
 }
 
 func (this *Time) encodeTime(dst []byte) (bytesEncoded int, isComplete bool) {
+	if this.IsZeroValue() {
+		return encodeZeroTime(dst)
+	}
+
 	isZeroTS := this.TimezoneType == TypeZero
 	bytesEncoded, isComplete = encodeTime(int(this.Hour), int(this.Minute),
 		int(this.Second), int(this.Nanosecond), isZeroTS, dst)
@@ -85,6 +96,10 @@ func (this *Time) encodeTime(dst []byte) (bytesEncoded int, isComplete bool) {
 }
 
 func (this *Time) encodeTimestamp(dst []byte) (bytesEncoded int, isComplete bool) {
+	if this.IsZeroValue() {
+		return encodeZeroTimestamp(dst)
+	}
+
 	isZeroTS := this.TimezoneType == TypeZero
 	bytesEncoded, isComplete = encodeTimestamp(this.Year, int(this.Month),
 		int(this.Day), int(this.Hour), int(this.Minute), int(this.Second),
@@ -250,6 +265,30 @@ func getYearGroupCount(encodedYear uint32, uncountedBits int) int {
 	return size
 }
 
+var zeroBytes = [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+
+func encodeZeroBytes(count int, dst []byte) (bytesEncoded int, isComplete bool) {
+	if len(dst) < count {
+		return
+	}
+	copy(dst[:count], zeroBytes[:])
+	bytesEncoded = count
+	isComplete = true
+	return
+}
+
+func encodeZeroDate(dst []byte) (bytesEncoded int, isComplete bool) {
+	return encodeZeroBytes(byteCountsZeroValue[TypeDate], dst)
+}
+
+func encodeZeroTime(dst []byte) (bytesEncoded int, isComplete bool) {
+	return encodeZeroBytes(byteCountsZeroValue[TypeTime], dst)
+}
+
+func encodeZeroTimestamp(dst []byte) (bytesEncoded int, isComplete bool) {
+	return encodeZeroBytes(byteCountsZeroValue[TypeTimestamp], dst)
+}
+
 func encodeDate(year, month, day int, dst []byte) (bytesEncoded int, isComplete bool) {
 	if len(dst) < byteCountDate {
 		return
@@ -278,7 +317,8 @@ func encodeTime(hour, minute, second, nanosecond int, isZeroTS bool, dst []byte)
 
 	subsecond := nanosecond / subsecMultipliers[magnitude]
 
-	accumulator := uint64(hour)
+	accumulator := ^uint64(0)
+	accumulator = (accumulator << uint(sizeHour)) | uint64(hour)
 	accumulator = (accumulator << uint(sizeMinute)) | uint64(minute)
 	accumulator = (accumulator << uint(sizeSecond)) | uint64(second)
 	accumulator = (accumulator << uint(sizeSubsecond*magnitude)) | uint64(subsecond)

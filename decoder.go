@@ -32,6 +32,7 @@ package compact_time
 
 import (
 	"fmt"
+	"io"
 	gotime "time"
 
 	"github.com/kstenerud/go-uleb128"
@@ -39,14 +40,19 @@ import (
 
 var ErrorIncomplete = fmt.Errorf("Compact time value is incomplete")
 
+const RequiredBufferSize = 127
+
 // Decode a date.
-// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-func DecodeDate(src []byte) (time Time, bytesDecoded int, err error) {
+func DecodeDate(reader io.Reader) (time Time, bytesDecoded int, err error) {
+	return DecodeDateWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeDateWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
 	var year int
 	var month int
 	var day int
 
-	year, month, day, bytesDecoded, err = decodeDateFields(src)
+	year, month, day, bytesDecoded, err = decodeDateFields(reader, buffer)
 	if err != nil {
 		return
 	}
@@ -59,13 +65,16 @@ func DecodeDate(src []byte) (time Time, bytesDecoded int, err error) {
 }
 
 // Decode a go date.
-// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-func DecodeGoDate(src []byte) (time gotime.Time, bytesDecoded int, err error) {
+func DecodeGoDate(reader io.Reader) (time gotime.Time, bytesDecoded int, err error) {
+	return DecodeGoDateWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeGoDateWithBuffer(reader io.Reader, buffer []byte) (time gotime.Time, bytesDecoded int, err error) {
 	var year int
 	var month int
 	var day int
 
-	year, month, day, bytesDecoded, err = decodeDateFields(src)
+	year, month, day, bytesDecoded, err = decodeDateFields(reader, buffer)
 	if err != nil {
 		return
 	}
@@ -74,8 +83,11 @@ func DecodeGoDate(src []byte) (time gotime.Time, bytesDecoded int, err error) {
 }
 
 // Decode a time value.
-// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-func DecodeTime(src []byte) (time Time, bytesDecoded int, err error) {
+func DecodeTime(reader io.Reader) (time Time, bytesDecoded int, err error) {
+	return DecodeTimeWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeTimeWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
 	var hour int
 	var minute int
 	var second int
@@ -86,7 +98,7 @@ func DecodeTime(src []byte) (time Time, bytesDecoded int, err error) {
 	var tzType TimezoneType
 	hour, minute, second, nanosecond,
 		latitudeHundredths, longitudeHundredths,
-		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(reader, buffer)
 	if err != nil {
 		return
 	}
@@ -104,8 +116,11 @@ func DecodeTime(src []byte) (time Time, bytesDecoded int, err error) {
 }
 
 // Decode a go time value.
-// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-func DecodeGoTime(src []byte) (time gotime.Time, bytesDecoded int, err error) {
+func DecodeGoTime(reader io.Reader) (time gotime.Time, bytesDecoded int, err error) {
+	return DecodeGoTimeWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeGoTimeWithBuffer(reader io.Reader, buffer []byte) (time gotime.Time, bytesDecoded int, err error) {
 	var hour int
 	var minute int
 	var second int
@@ -113,7 +128,7 @@ func DecodeGoTime(src []byte) (time gotime.Time, bytesDecoded int, err error) {
 	var areaLocation string
 	var tzType TimezoneType
 	hour, minute, second, nanosecond, _, _,
-		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(reader, buffer)
 	if err != nil {
 		return
 	}
@@ -138,8 +153,11 @@ func DecodeGoTime(src []byte) (time gotime.Time, bytesDecoded int, err error) {
 }
 
 // Decode a timestamp.
-// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-func DecodeTimestamp(src []byte) (time Time, bytesDecoded int, err error) {
+func DecodeTimestamp(reader io.Reader) (time Time, bytesDecoded int, err error) {
+	return DecodeTimestampWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeTimestampWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
 	var year int
 	var month int
 	var day int
@@ -154,7 +172,7 @@ func DecodeTimestamp(src []byte) (time Time, bytesDecoded int, err error) {
 
 	year, month, day, hour, minute, second, nanosecond,
 		latitudeHundredths, longitudeHundredths,
-		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(reader, buffer)
 	if err != nil {
 		return
 	}
@@ -171,8 +189,11 @@ func DecodeTimestamp(src []byte) (time Time, bytesDecoded int, err error) {
 }
 
 // Decode a go timestamp.
-// Returns the number of bytes decoded, or the number of bytes it attempted to decode.
-func DecodeGoTimestamp(src []byte) (time gotime.Time, bytesDecoded int, err error) {
+func DecodeGoTimestamp(reader io.Reader) (time gotime.Time, bytesDecoded int, err error) {
+	return DecodeGoTimestampWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeGoTimestampWithBuffer(reader io.Reader, buffer []byte) (time gotime.Time, bytesDecoded int, err error) {
 	var year int
 	var month int
 	var day int
@@ -184,7 +205,7 @@ func DecodeGoTimestamp(src []byte) (time gotime.Time, bytesDecoded int, err erro
 	var tzType TimezoneType
 
 	year, month, day, hour, minute, second, nanosecond, _, _,
-		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(src)
+		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(reader, buffer)
 	if err != nil {
 		return
 	}
@@ -208,6 +229,21 @@ func DecodeGoTimestamp(src []byte) (time gotime.Time, bytesDecoded int, err erro
 }
 
 // =============================================================================
+
+func makeRequiredBuffer() []byte {
+	return make([]byte, RequiredBufferSize)
+}
+
+func fillSlice(reader io.Reader, dst []byte) (err error) {
+	var bytesRead int
+	for len(dst) > 0 {
+		if bytesRead, err = reader.Read(dst); err != nil {
+			return
+		}
+		dst = dst[bytesRead:]
+	}
+	return
+}
 
 func decodeLE(src []byte, byteCount int) uint64 {
 	accumulator := uint64(0)
@@ -234,89 +270,84 @@ func decodeYear(encodedYear uint32) int {
 	return int(decodeZigzag32(uint32(encodedYear))) + yearBias
 }
 
-func decodeTimezone(src []byte) (latitudeHundredths int, longitudeHundredths int,
+func decodeTimezone(reader io.Reader, buffer []byte) (latitudeHundredths int, longitudeHundredths int,
 	areaLocation string, tzType TimezoneType, bytesDecoded int, err error) {
-
-	if len(src) == 0 {
-		err = ErrorIncomplete
+	if _, err = reader.Read(buffer[:1]); err != nil {
 		return
 	}
+	header := buffer[0]
 
-	if src[0]&maskLatLong != 0 {
-		bytesDecoded = byteCountLatLong
-		if bytesDecoded > len(src) {
-			err = ErrorIncomplete
+	if header&maskLatLong != 0 {
+		if err = fillSlice(reader, buffer[1:4]); err != nil {
 			return
 		}
-		latLong := decode32LE(src)
+		latLong := decode32LE(buffer)
 		longitudeHundredths = int(int32(latLong) >> shiftLongitude)
 		latitudeHundredths = int((int32(latLong<<16) >> 17) & maskLatitude)
 		tzType = TypeLatitudeLongitude
+		bytesDecoded = 4
 		return
 	}
 
-	stringLength := int(src[0] >> 1)
-	bytesDecoded = stringLength + 1
-	if bytesDecoded > len(src) {
-		err = ErrorIncomplete
+	stringLength := int(header >> 1)
+	if err = fillSlice(reader, buffer[:stringLength]); err != nil {
 		return
 	}
-
-	areaLocation = string(src[1:bytesDecoded])
+	areaLocation = string(buffer[:stringLength])
 	tzType = TypeAreaLocation
+	bytesDecoded = stringLength + 1
 	return
 }
 
-func decodeDateFields(src []byte) (year, month, day int, bytesDecoded int, err error) {
-	if len(src) < minByteCountDate {
-		err = ErrorIncomplete
+func decodeDateFields(reader io.Reader, buffer []byte) (year, month, day int, bytesDecoded int, err error) {
+	if err = fillSlice(reader, buffer[:2]); err != nil {
 		return
 	}
-
-	accumulator := int(decode16LE(src))
 	bytesDecoded = 2
+	accumulator := int(decode16LE(buffer))
 	day = int(accumulator & maskDay)
 	accumulator >>= sizeDay
 	month = int(accumulator & maskMonth)
 	accumulator >>= sizeMonth
-	asUint, asBig, byteCount, ok := uleb128.Decode(uint64(accumulator), yearLowBitCountDate, src[bytesDecoded:])
+	asUint, asBig, byteCount, err := uleb128.DecodeWithByteBuffer(reader, buffer)
+	if err != nil {
+		return
+	}
 	bytesDecoded += byteCount
-	if !ok {
-		err = ErrorIncomplete
-		return
-	}
 	if asBig != nil {
-		err = fmt.Errorf("Year (%v) is too big", asBig)
+		err = fmt.Errorf("Year is too big")
 		return
 	}
-	if asUint > 0xffffffff {
-		err = fmt.Errorf("Year (%v) is too big", asUint)
+	encodedYear := (asUint << 7) | uint64(accumulator)
+	if encodedYear > 0xffffffff || byteCount*7+yearLowBitCountDate > 64 {
+		err = fmt.Errorf("Year is too big")
 		return
 	}
-	year = decodeYear(uint32(asUint))
+	year = decodeYear(uint32(encodedYear))
 	return
 }
 
-func decodeTimeFields(src []byte) (hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int,
+func decodeTimeFields(reader io.Reader, buffer []byte) (hour, minute, second, nanosecond,
+	latitudeHundredths, longitudeHundredths int,
 	areaLocation string, tzType TimezoneType, bytesDecoded int, err error) {
-	if len(src) == 0 {
-		err = ErrorIncomplete
-		return
-	}
 
-	magnitude := int((src[0] >> 1) & maskMagnitude)
-	baseByteCount := baseByteCountsTime[magnitude]
-	bytesDecoded = baseByteCount
-	if len(src) < baseByteCount {
-		err = ErrorIncomplete
+	if _, err = reader.Read(buffer[:1]); err != nil {
 		return
 	}
+	header := buffer[0]
+
+	magnitude := int((header >> 1) & maskMagnitude)
+	baseByteCount := baseByteCountsTime[magnitude]
+	if err = fillSlice(reader, buffer[1:baseByteCount]); err != nil {
+		return
+	}
+	bytesDecoded = baseByteCount
 
 	subsecondMultiplier := subsecMultipliers[magnitude]
 	sizeSubseconds := uint(sizeSubsecond * magnitude)
 	maskSubsecond := bitMask(int(sizeSubseconds))
 
-	accumulator := decodeLE(src, baseByteCount)
+	accumulator := decodeLE(buffer[:baseByteCount], baseByteCount)
 	hasTimezone := accumulator&1 == 1
 	accumulator >>= 1
 	accumulator >>= sizeMagnitude
@@ -350,34 +381,32 @@ func decodeTimeFields(src []byte) (hour, minute, second, nanosecond, latitudeHun
 		areaLocation,
 		tzType,
 		byteCount,
-		err = decodeTimezone(src[bytesDecoded:])
+		err = decodeTimezone(reader, buffer)
 
 	bytesDecoded += byteCount
 	return
 }
 
-func decodeTimestampFields(src []byte) (year, month, day, hour, minute, second, nanosecond,
+func decodeTimestampFields(reader io.Reader, buffer []byte) (year, month, day, hour, minute, second, nanosecond,
 	latitudeHundredths, longitudeHundredths int, areaLocation string, tzType TimezoneType,
 	bytesDecoded int, err error) {
 
-	if len(src) == 0 {
-		err = ErrorIncomplete
+	if _, err = reader.Read(buffer[:1]); err != nil {
 		return
 	}
+	header := buffer[0]
 
-	magnitude := int((src[0] >> 1) & maskMagnitude)
+	magnitude := int((header >> 1) & maskMagnitude)
 	subsecondMultiplier := subsecMultipliers[magnitude]
 	sizeSubseconds := uint(sizeSubsecond * magnitude)
 	maskSubsecond := bitMask(int(sizeSubseconds))
-
 	baseByteCount := baseByteCountsTimestamp[magnitude]
-	bytesDecoded = baseByteCount
-	if len(src) < baseByteCount {
-		err = ErrorIncomplete
+	if err = fillSlice(reader, buffer[1:baseByteCount]); err != nil {
 		return
 	}
+	bytesDecoded = baseByteCount
 
-	accumulator := decodeLE(src, baseByteCount)
+	accumulator := decodeLE(buffer[:baseByteCount], baseByteCount)
 	hasTimezone := accumulator&1 == 1
 	accumulator >>= 1
 	accumulator >>= sizeMagnitude
@@ -395,21 +424,21 @@ func decodeTimestampFields(src []byte) (year, month, day, hour, minute, second, 
 	accumulator >>= sizeMonth
 
 	yearLowBitCount := yearLowBitCountsTimestamp[magnitude]
-	asUint, asBig, byteCount, ok := uleb128.Decode(uint64(accumulator), yearLowBitCount, src[baseByteCount:])
+	asUint, asBig, byteCount, err := uleb128.DecodeWithByteBuffer(reader, buffer)
+	if err != nil {
+		return
+	}
 	bytesDecoded += byteCount
-	if !ok {
-		err = ErrorIncomplete
-		return
-	}
 	if asBig != nil {
-		err = fmt.Errorf("Year (%v) is too big", asBig)
+		err = fmt.Errorf("Year is too big")
 		return
 	}
-	if asUint > 0xffffffff {
-		err = fmt.Errorf("Year (%v) is too big", asUint)
+	encodedYear := (asUint << yearLowBitCount) | uint64(accumulator)
+	if encodedYear > 0xffffffff || byteCount*7+yearLowBitCount > 64 {
+		err = fmt.Errorf("Year is too big")
 		return
 	}
-	year = decodeYear(uint32(asUint))
+	year = decodeYear(uint32(encodedYear))
 
 	if !hasTimezone {
 		if year == 2000 && month == 0 && day == 0 {
@@ -419,13 +448,12 @@ func decodeTimestampFields(src []byte) (year, month, day, hour, minute, second, 
 		tzType = TypeZero
 		return
 	}
-
 	latitudeHundredths,
 		longitudeHundredths,
 		areaLocation,
 		tzType,
 		byteCount,
-		err = decodeTimezone(src[bytesDecoded:])
+		err = decodeTimezone(reader, buffer)
 
 	bytesDecoded += byteCount
 	return

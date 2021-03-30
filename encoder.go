@@ -32,6 +32,7 @@ package compact_time
 
 import (
 	"fmt"
+	"io"
 	gotime "time"
 
 	"github.com/kstenerud/go-uleb128"
@@ -55,75 +56,76 @@ func (this *Time) EncodedSize() int {
 }
 
 // Encode a time value (date, time, or timestamp).
-// Returns the number of bytes encoded, or the number of bytes it attempted to encode.
-// Returns isComplete=true if there was enough room in dst.
-// Returns an error if something went wrong other than there not being enough room.
-func (this *Time) Encode(dst []byte) (bytesEncoded int, isComplete bool) {
+func (this *Time) Encode(writer io.Writer) (bytesEncoded int, err error) {
+	buffer := make([]byte, this.EncodedSize())
+	bytesEncoded = this.EncodeToBytes(buffer)
+	_, err = writer.Write(buffer[:bytesEncoded])
+	return
+}
+
+// Encode a time value (date, time, or timestamp) to a byte array.
+// Assumes that the buffer is big enough.
+func (this *Time) EncodeToBytes(buffer []byte) (bytesEncoded int) {
 	switch this.TimeType {
 	case TypeDate:
-		return this.encodeDate(dst)
+		return this.encodeDate(buffer)
 	case TypeTime:
-		return this.encodeTime(dst)
+		return this.encodeTime(buffer)
 	case TypeTimestamp:
-		return this.encodeTimestamp(dst)
+		return this.encodeTimestamp(buffer)
 	default:
 		panic(fmt.Errorf("%v: Unknown time type", this.TimeType))
 	}
 }
 
-func (this *Time) encodeDate(dst []byte) (bytesEncoded int, isComplete bool) {
+func (this *Time) encodeDate(buffer []byte) (bytesEncoded int) {
 	if this.IsZeroValue() {
-		return encodeZeroDate(dst)
+		return encodeZeroDate(buffer)
 	}
 
-	return encodeDate(this.Year, int(this.Month), int(this.Day), dst)
+	return encodeDate(this.Year, int(this.Month), int(this.Day), buffer)
 }
 
-func (this *Time) encodeTime(dst []byte) (bytesEncoded int, isComplete bool) {
+func (this *Time) encodeTime(buffer []byte) (bytesEncoded int) {
 	if this.IsZeroValue() {
-		return encodeZeroTime(dst)
+		return encodeZeroTime(buffer)
 	}
 
 	isZeroTS := this.TimezoneType == TypeZero
-	bytesEncoded, isComplete = encodeTime(int(this.Hour), int(this.Minute),
-		int(this.Second), int(this.Nanosecond), isZeroTS, dst)
-	if isComplete && !isZeroTS {
-		accumEncoded := bytesEncoded
-		bytesEncoded, isComplete = this.encodeTimezone(dst[bytesEncoded:])
-		bytesEncoded += accumEncoded
+	bytesEncoded = encodeTime(int(this.Hour), int(this.Minute),
+		int(this.Second), int(this.Nanosecond), isZeroTS, buffer)
+	if !isZeroTS {
+		bytesEncoded += this.encodeTimezone(buffer[bytesEncoded:])
 	}
 	return
 }
 
-func (this *Time) encodeTimestamp(dst []byte) (bytesEncoded int, isComplete bool) {
+func (this *Time) encodeTimestamp(buffer []byte) (bytesEncoded int) {
 	if this.IsZeroValue() {
-		return encodeZeroTimestamp(dst)
+		return encodeZeroTimestamp(buffer)
 	}
 
 	isZeroTS := this.TimezoneType == TypeZero
-	bytesEncoded, isComplete = encodeTimestamp(this.Year, int(this.Month),
+	bytesEncoded = encodeTimestamp(this.Year, int(this.Month),
 		int(this.Day), int(this.Hour), int(this.Minute), int(this.Second),
-		int(this.Nanosecond), isZeroTS, dst)
-	if isComplete && !isZeroTS {
-		accumEncoded := bytesEncoded
-		bytesEncoded, isComplete = this.encodeTimezone(dst[bytesEncoded:])
-		bytesEncoded += accumEncoded
+		int(this.Nanosecond), isZeroTS, buffer)
+	if !isZeroTS {
+		bytesEncoded += this.encodeTimezone(buffer[bytesEncoded:])
 	}
 	return
 }
 
-func (this *Time) encodeTimezone(dst []byte) (bytesEncoded int, isComplete bool) {
+func (this *Time) encodeTimezone(buffer []byte) (bytesEncoded int) {
 	switch this.TimezoneType {
 	case TypeZero:
-		isComplete = true
+		return
 	case TypeAreaLocation, TypeLocal:
-		return encodeTimezoneAreaLoc(this.ShortAreaLocation, dst)
+		return encodeTimezoneAreaLoc(this.ShortAreaLocation, buffer)
 	case TypeLatitudeLongitude:
-		return encodeTimezoneLatLong(int(this.LatitudeHundredths), int(this.LongitudeHundredths), dst)
+		return encodeTimezoneLatLong(int(this.LatitudeHundredths), int(this.LongitudeHundredths), buffer)
 	default:
 		panic(fmt.Errorf("%v: Unknown timezone type", this.TimezoneType))
 	}
-	return
 }
 
 // =============================================================================
@@ -144,33 +146,50 @@ func EncodedSizeGoTimestamp(time gotime.Time) int {
 	return encodedSizeTimestamp(time.Year(), time.Nanosecond(), tzType, shortAreaLocation)
 }
 
-func EncodeGoDate(time gotime.Time, dst []byte) (bytesEncoded int, isComplete bool) {
-	return encodeDate(time.Year(), int(time.Month()), int(time.Day()), dst)
+func EncodeGoDate(time gotime.Time, writer io.Writer) (bytesEncoded int, err error) {
+	buffer := make([]byte, EncodedSizeGoDate(time))
+	bytesEncoded = EncodeGoDateToBytes(time, buffer)
+	_, err = writer.Write(buffer[:bytesEncoded])
+	return
 }
 
-func EncodeGoTime(time gotime.Time, dst []byte) (bytesEncoded int, isComplete bool) {
+func EncodeGoDateToBytes(time gotime.Time, buffer []byte) (bytesEncoded int) {
+	return encodeDate(time.Year(), int(time.Month()), int(time.Day()), buffer)
+}
+
+func EncodeGoTime(time gotime.Time, writer io.Writer) (bytesEncoded int, err error) {
+	buffer := make([]byte, EncodedSizeGoTime(time))
+	bytesEncoded = EncodeGoTimeToBytes(time, buffer)
+	_, err = writer.Write(buffer[:bytesEncoded])
+	return
+}
+
+func EncodeGoTimeToBytes(time gotime.Time, buffer []byte) (bytesEncoded int) {
 	shortAreaLocation, _ := splitAreaLocation(time.Location().String())
 	isZeroTS := shortAreaLocation == "Z"
-	bytesEncoded, isComplete = encodeTime(time.Hour(), time.Minute(),
-		time.Second(), time.Nanosecond(), isZeroTS, dst)
-	if isComplete && !isZeroTS {
-		accumEncoded := bytesEncoded
-		bytesEncoded, isComplete = encodeTimezoneAreaLoc(shortAreaLocation, dst[bytesEncoded:])
-		bytesEncoded += accumEncoded
+	bytesEncoded = encodeTime(time.Hour(), time.Minute(),
+		time.Second(), time.Nanosecond(), isZeroTS, buffer)
+	if !isZeroTS {
+		bytesEncoded += encodeTimezoneAreaLoc(shortAreaLocation, buffer[bytesEncoded:])
 	}
 	return
 }
 
-func EncodeGoTimestamp(time gotime.Time, dst []byte) (bytesEncoded int, isComplete bool) {
+func EncodeGoTimestamp(time gotime.Time, writer io.Writer) (bytesEncoded int, err error) {
+	buffer := make([]byte, EncodedSizeGoTimestamp(time))
+	bytesEncoded = EncodeGoTimestampToBytes(time, buffer)
+	_, err = writer.Write(buffer[:bytesEncoded])
+	return
+}
+
+func EncodeGoTimestampToBytes(time gotime.Time, buffer []byte) (bytesEncoded int) {
 	shortAreaLocation, _ := splitAreaLocation(time.Location().String())
 	isZeroTS := shortAreaLocation == "Z"
-	bytesEncoded, isComplete = encodeTimestamp(time.Year(), int(time.Month()),
+	bytesEncoded = encodeTimestamp(time.Year(), int(time.Month()),
 		time.Day(), time.Hour(), time.Minute(), time.Second(),
-		time.Nanosecond(), isZeroTS, dst)
-	if isComplete && !isZeroTS {
-		accumEncoded := bytesEncoded
-		bytesEncoded, isComplete = encodeTimezoneAreaLoc(shortAreaLocation, dst[bytesEncoded:])
-		bytesEncoded += accumEncoded
+		time.Nanosecond(), isZeroTS, buffer)
+	if !isZeroTS {
+		bytesEncoded += encodeTimezoneAreaLoc(shortAreaLocation, buffer[bytesEncoded:])
 	}
 	return
 }
@@ -211,23 +230,26 @@ func encodedSizeTimezone(tzType TimezoneType, shortAreaLocation string) int {
 	}
 }
 
-func encodeLE(value uint64, dst []byte, byteCount int) {
+func encodeLE(value uint64, buffer []byte, byteCount int) (bytesEncoded int) {
 	for i := 0; i < byteCount; i++ {
-		dst[i] = uint8(value)
+		buffer[i] = uint8(value)
 		value >>= 8
 	}
+	return byteCount
 }
 
-func encode16LE(value uint16, dst []byte) {
-	dst[0] = uint8(value)
-	dst[1] = uint8(value >> 8)
+func encode16LE(value uint16, buffer []byte) (bytesEncoded int) {
+	buffer[0] = uint8(value)
+	buffer[1] = uint8(value >> 8)
+	return 2
 }
 
-func encode32LE(value uint32, dst []byte) {
-	dst[0] = uint8(value)
-	dst[1] = uint8(value >> 8)
-	dst[2] = uint8(value >> 16)
-	dst[3] = uint8(value >> 24)
+func encode32LE(value uint32, buffer []byte) (bytesEncoded int) {
+	buffer[0] = uint8(value)
+	buffer[1] = uint8(value >> 8)
+	buffer[2] = uint8(value >> 16)
+	buffer[3] = uint8(value >> 24)
+	return 4
 }
 
 func encodeZigzag32(value int32) uint32 {
@@ -267,33 +289,26 @@ func getYearGroupCount(encodedYear uint32, uncountedBits int) int {
 
 var zeroBytes = [...]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
-func encodeZeroBytes(count int, dst []byte) (bytesEncoded int, isComplete bool) {
-	if len(dst) < count {
-		return
+func encodeZeroBytes(count int, buffer []byte) (bytesEncoded int) {
+	if len(buffer) < count {
+		panic(fmt.Errorf("Attempt to copy %v bytes into %v buffer", count, len(buffer)))
 	}
-	copy(dst[:count], zeroBytes[:])
-	bytesEncoded = count
-	isComplete = true
-	return
+	return copy(buffer, zeroBytes[:count])
 }
 
-func encodeZeroDate(dst []byte) (bytesEncoded int, isComplete bool) {
-	return encodeZeroBytes(byteCountsZeroValue[TypeDate], dst)
+func encodeZeroDate(buffer []byte) (bytesEncoded int) {
+	return encodeZeroBytes(byteCountsZeroValue[TypeDate], buffer)
 }
 
-func encodeZeroTime(dst []byte) (bytesEncoded int, isComplete bool) {
-	return encodeZeroBytes(byteCountsZeroValue[TypeTime], dst)
+func encodeZeroTime(buffer []byte) (bytesEncoded int) {
+	return encodeZeroBytes(byteCountsZeroValue[TypeTime], buffer)
 }
 
-func encodeZeroTimestamp(dst []byte) (bytesEncoded int, isComplete bool) {
-	return encodeZeroBytes(byteCountsZeroValue[TypeTimestamp], dst)
+func encodeZeroTimestamp(buffer []byte) (bytesEncoded int) {
+	return encodeZeroBytes(byteCountsZeroValue[TypeTimestamp], buffer)
 }
 
-func encodeDate(year, month, day int, dst []byte) (bytesEncoded int, isComplete bool) {
-	if len(dst) < byteCountDate {
-		return
-	}
-
+func encodeDate(year, month, day int, buffer []byte) (bytesEncoded int) {
 	encodedYear := encodeYear(year)
 	yearGroupedMask := uint32(bitMask(yearLowBitCountDate))
 
@@ -301,19 +316,14 @@ func encodeDate(year, month, day int, dst []byte) (bytesEncoded int, isComplete 
 	accumulator = (accumulator << uint(sizeMonth)) | uint16(month)
 	accumulator = (accumulator << uint(sizeDay)) | uint16(day)
 
-	encode16LE(accumulator, dst)
-	byteCount := 0
-	byteCount, isComplete = uleb128.EncodeUint64(uint64(encodedYear>>yearLowBitCountDate), dst[byteCountDate:])
-	bytesEncoded = byteCount + byteCountDate
+	bytesEncoded = encode16LE(accumulator, buffer)
+	bytesEncoded += uleb128.EncodeUint64ToBytes(uint64(encodedYear>>yearLowBitCountDate), buffer[bytesEncoded:])
 	return
 }
 
-func encodeTime(hour, minute, second, nanosecond int, isZeroTS bool, dst []byte) (bytesEncoded int, isComplete bool) {
+func encodeTime(hour, minute, second, nanosecond int, isZeroTS bool, buffer []byte) (bytesEncoded int) {
 	magnitude := getSubsecondMagnitude(nanosecond)
 	baseByteCount := baseByteCountsTime[magnitude]
-	if len(dst) < baseByteCount {
-		return
-	}
 
 	subsecond := nanosecond / subsecMultipliers[magnitude]
 
@@ -328,19 +338,13 @@ func encodeTime(hour, minute, second, nanosecond int, isZeroTS bool, dst []byte)
 		accumulator |= 1
 	}
 
-	encodeLE(accumulator, dst, baseByteCount)
-	bytesEncoded = baseByteCount
-	isComplete = true
-	return
+	return encodeLE(accumulator, buffer, baseByteCount)
 }
 
 func encodeTimestamp(year, month, day, hour, minute, second, nanosecond int,
-	isZeroTS bool, dst []byte) (bytesEncoded int, isComplete bool) {
+	isZeroTS bool, buffer []byte) (bytesEncoded int) {
 	magnitude := getSubsecondMagnitude(nanosecond)
 	baseByteCount := baseByteCountsTimestamp[magnitude]
-	if len(dst) < baseByteCount {
-		return
-	}
 
 	subsecond := nanosecond / subsecMultipliers[magnitude]
 	encodedYear := encodeYear(year)
@@ -359,33 +363,19 @@ func encodeTimestamp(year, month, day, hour, minute, second, nanosecond int,
 		accumulator |= 1
 	}
 
-	encodeLE(accumulator, dst, baseByteCount)
-
-	byteCount := 0
-	byteCount, isComplete = uleb128.EncodeUint64(uint64(encodedYear>>uint(yearLowBitCount)), dst[baseByteCount:])
-	bytesEncoded = byteCount + baseByteCount
+	bytesEncoded = encodeLE(accumulator, buffer, baseByteCount)
+	bytesEncoded += uleb128.EncodeUint64ToBytes(uint64(encodedYear>>uint(yearLowBitCount)), buffer[bytesEncoded:])
 	return
 }
 
-func encodeTimezoneAreaLoc(areaLocation string, dst []byte) (bytesEncoded int, isComplete bool) {
-	bytesEncoded = len(areaLocation) + 1
-	if len(dst) < bytesEncoded {
-		return
-	}
-	dst[0] = byte(len(areaLocation) << shiftLength)
-	copy(dst[1:], areaLocation)
-	isComplete = true
-	return
+func encodeTimezoneAreaLoc(areaLocation string, buffer []byte) (bytesEncoded int) {
+	buffer[0] = byte(len(areaLocation) << shiftLength)
+	return copy(buffer[1:], areaLocation) + 1
 }
 
-func encodeTimezoneLatLong(latitudeHundredths, longitudeHundredths int, dst []byte) (bytesEncoded int, isComplete bool) {
+func encodeTimezoneLatLong(latitudeHundredths, longitudeHundredths int, buffer []byte) (bytesEncoded int) {
 	bytesEncoded = byteCountLatLong
-	if len(dst) < bytesEncoded {
-		return
-	}
 	latLong := ((longitudeHundredths & maskLongitude) << shiftLongitude) |
 		((latitudeHundredths & maskLatitude) << shiftLatitude) | maskLatLong
-	encode32LE(uint32(latLong), dst)
-	isComplete = true
-	return
+	return encode32LE(uint32(latLong), buffer)
 }

@@ -19,20 +19,20 @@ func demonstrateEncode() {
 	if err != nil {
 		// TODO: Handle error
 	}
-	buffer := make([]byte, EncodedSize(compactDate))
-	encodedCount, ok := Encode(compactDate, buffer)
-	if !ok {
-		// TODO: Not enough room in buffer to encode
+	buffer := &bytes.Buffer{}
+	encodedCount, err := compactDate.Encode(buffer)
+	if err != nil {
+		// TODO: Handle error
 	}
-	fmt.Printf("Encoded [%v] into %v bytes: %v\n", goDate, encodedCount, buffer)
+	fmt.Printf("Encoded [%v] into %v bytes: %v\n", goDate, encodedCount, buffer.Bytes())
 	// Prints: Encoded [2020-08-30 15:33:14.019577323 +0800 +08] into 21 bytes: [95 207 85 9 156 240 121 68 1 22 83 47 83 105 110 103 97 112 111 114 101]
 }
 
 func demonstrateDecode() {
 	buffer := []byte{0x28, 0x9a, 0x12, 0x78, 0x08}
-	compactDate, decodedCount, err := DecodeTimestamp(buffer)
+	compactDate, decodedCount, err := DecodeTimestamp(bytes.NewBuffer(buffer))
 	if err != nil {
-		// TODO: Check if is compact_time.ErrorIncomplete or something else
+		// TODO: Handle error
 	}
 	goDate, err := compactDate.AsGoTime()
 	if err != nil {

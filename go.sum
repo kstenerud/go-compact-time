@@ -2,5 +2,5 @@ github.com/kstenerud/go-describe v1.2.13 h1:3EazEwS/oNw0uMGQt45UvuxNNVEjR65dkAoy
 github.com/kstenerud/go-describe v1.2.13/go.mod h1:+B7K/fXHhObqwmMhcUT0CPT68fR1SQ9XNmJ5E4ck2RI=
 github.com/kstenerud/go-duplicates v1.1.1 h1:Z8pdWHv842d/vszSeoWGAswbxx/8SHxz+/DNYQUl4jU=
 github.com/kstenerud/go-duplicates v1.1.1/go.mod h1:OoPQ8B7sw/LFlPpLJT6bbCrHdOtaC9yWBF1uZXqOoxw=
-github.com/kstenerud/go-uleb128 v1.0.4 h1:1ry8cajnIScKDv66w8q0o6lKzxoEM6CiQ7SiLul+h1A=
-github.com/kstenerud/go-uleb128 v1.0.4/go.mod h1:0DgQsdpP8sW2B3Qd2yx3vO7oaGNqDUZW7h4PoKIQj14=
+github.com/kstenerud/go-uleb128 v1.1.0 h1:QrNuuZVFkNvn3tEEJHDSUZRckNZt1haE23uYPKJ8qAA=
+github.com/kstenerud/go-uleb128 v1.1.0/go.mod h1:0DgQsdpP8sW2B3Qd2yx3vO7oaGNqDUZW7h4PoKIQj14=

@@ -151,6 +151,27 @@ func (this *Time) IsZeroValue() bool {
 	return this.TimezoneType == TypeZeroValue
 }
 
+// Check if two times are equivalent. This handles cases where the time zones
+// are technically equivalent (Z == UTC == Etc/UTC == Etc/GMT, etc)
+func (this *Time) IsEquivalentTo(that *Time) bool {
+	if this.IsZeroTZ() && that.IsZeroTZ() {
+		return this.Year == that.Year &&
+			this.Month == that.Month &&
+			this.Day == that.Day &&
+			this.Hour == that.Hour &&
+			this.Minute == that.Minute &&
+			this.Second == that.Second &&
+			this.Nanosecond == that.Nanosecond
+	}
+	return *this == *that
+}
+
+// Returns true if the time zone type is TypeZero, or the area/location represents
+// UTC or equivalent.
+func (this *Time) IsZeroTZ() bool {
+	return this.TimezoneType == TypeZero || this.ShortAreaLocation == "Z"
+}
+
 func AsCompactTime(src gotime.Time) (Time, error) {
 	locationStr := src.Location().String()
 	if src.Location() == gotime.Local {

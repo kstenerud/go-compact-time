@@ -535,33 +535,33 @@ func TestTime(t *testing.T) {
 }
 
 func TestTimestamp(t *testing.T) {
-	// assertTimestampEncodeDecode(t, 2020, 8, 30, 15, 33, 14, 19577323, "Asia/Singapore", []byte{0x5f, 0xcf, 0x55, 0x09, 0x9c, 0xf0, 0x79, 0x44, 0x01, 0x16, 'S', '/', 'S', 'i', 'n', 'g', 'a', 'p', 'o', 'r', 'e'})
-	// assertTimestampEncodeDecode(t, 1966, 12, 1, 5, 13, 5, 0, "", []byte{0x28, 0x9a, 0x12, 0x78, 0x08})
+	assertTimestampEncodeDecode(t, 2020, 8, 30, 15, 33, 14, 19577323, "Asia/Singapore", []byte{0x5f, 0xcf, 0x55, 0x09, 0x9c, 0xf0, 0x79, 0x44, 0x01, 0x16, 'S', '/', 'S', 'i', 'n', 'g', 'a', 'p', 'o', 'r', 'e'})
+	assertTimestampEncodeDecode(t, 1966, 12, 1, 5, 13, 5, 0, "", []byte{0x28, 0x9a, 0x12, 0x78, 0x08})
 
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "Europe/Berlin", []byte{0x01, 0x00, 0x10, 0x02, 00, 0x10, 'E', '/', 'B', 'e', 'r', 'l', 'i', 'n'})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 1, 0, 0, 0, "", []byte{0x00, 0x80, 0x10, 0x02, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 1, 0, 0, "", []byte{0x00, 0x02, 0x10, 0x02, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 1, 0, "", []byte{0x08, 0x00, 0x10, 0x02, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 1000000, "", []byte{0x0a, 0x00, 0x00, 0x40, 0x08, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 999000000, "", []byte{0x3a, 0x1f, 0x00, 0x40, 0x08, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 999000, "", []byte{0x3c, 0x1f, 0x00, 0x00, 0x00, 0x21, 0x00, 0x00})
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 999, "", []byte{0x3e, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x84, 0x00, 0x00})
-	// assertTimestampEncodeDecode(t, 2009, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x42, 0x02})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "Europe/Berlin", []byte{0x01, 0x00, 0x10, 0x02, 00, 0x10, 'E', '/', 'B', 'e', 'r', 'l', 'i', 'n'})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 1, 0, 0, 0, "", []byte{0x00, 0x80, 0x10, 0x02, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 1, 0, 0, "", []byte{0x00, 0x02, 0x10, 0x02, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 1, 0, "", []byte{0x08, 0x00, 0x10, 0x02, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 1000000, "", []byte{0x0a, 0x00, 0x00, 0x40, 0x08, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 999000000, "", []byte{0x3a, 0x1f, 0x00, 0x40, 0x08, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 999000, "", []byte{0x3c, 0x1f, 0x00, 0x00, 0x00, 0x21, 0x00, 0x00})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 999, "", []byte{0x3e, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x84, 0x00, 0x00})
+	assertTimestampEncodeDecode(t, 2009, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x42, 0x02})
 
-	// assertTimestampEncodeDecode(t, 3009, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x42, 0xfc, 0x01})
-	// assertTimestampEncodeDecode(t, -50000, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0xe2, 0xc7, 0x65})
+	assertTimestampEncodeDecode(t, 3009, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0x42, 0xfc, 0x01})
+	assertTimestampEncodeDecode(t, -50000, 1, 1, 0, 0, 0, 0, "", []byte{0x00, 0x00, 0x10, 0xe2, 0xc7, 0x65})
 
-	// // June 24, 2019, 17:53:04.180
-	// assertTimestampEncodeDecode(t, 2019, 6, 24, 17, 53, 4, 180000000, "", []byte{0xa2, 0x85, 0xa8, 0x23, 0x36, 0x13})
+	// June 24, 2019, 17:53:04.180
+	assertTimestampEncodeDecode(t, 2019, 6, 24, 17, 53, 4, 180000000, "", []byte{0xa2, 0x85, 0xa8, 0x23, 0x36, 0x13})
 
-	// // January 7, 1998, 08:19:20, Europe/Rome
-	// assertTimestampEncodeDecode(t, 1998, 1, 7, 8, 19, 20, 0, "Europe/Rome", []byte{0xa1, 0x26, 0x74, 0x62, 0x00, 0x0c, 'E', '/', 'R', 'o', 'm', 'e'})
+	// January 7, 1998, 08:19:20, Europe/Rome
+	assertTimestampEncodeDecode(t, 1998, 1, 7, 8, 19, 20, 0, "Europe/Rome", []byte{0xa1, 0x26, 0x74, 0x62, 0x00, 0x0c, 'E', '/', 'R', 'o', 'm', 'e'})
 
 	// August 31, 3190, 00:54:47.394129, location 59.94, 10.71
 	assertTimestampLatLongEncodeDecode(t, 3190, 8, 31, 0, 54, 47, 394129000, 5994, 1071, []byte{0x8d, 0x1c, 0xb0, 0xd7, 0x06, 0x1f, 0x99, 0x12, 0xd5, 0x2e, 0x2f, 0x04})
 
-	// assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "Local", []byte{0x01, 0x00, 0x10, 0x02, 0x00, 0x02, 0x4c})
+	assertTimestampEncodeDecode(t, 2000, 1, 1, 0, 0, 0, 0, "Local", []byte{0x01, 0x00, 0x10, 0x02, 0x00, 0x02, 0x4c})
 }
 
 func TestTimestampUTC(t *testing.T) {

@@ -54,6 +54,7 @@ const baseSizeTimestamp = sizeMagnitude + sizeSecond + sizeMinute + sizeHour + s
 const byteCountDate = 2
 const minByteCountDate = 3
 const byteCountLatLong = 4
+const byteCountUTCOffset = 3
 
 const maskLatLong = 1
 const maskMagnitude = ((1 << sizeMagnitude) - 1)

@@ -41,17 +41,17 @@ import (
 // Get the number of bytes that would be required to encode this time value.
 func (this *Time) EncodedSize() int {
 	if this.IsZeroValue() {
-		return byteCountsZeroValue[this.TimeType]
+		return byteCountsZeroValue[this.Type]
 	}
-	switch this.TimeType {
-	case TypeDate:
+	switch this.Type {
+	case TimeTypeDate:
 		return encodedSizeDate(this.Year)
-	case TypeTime:
-		return encodedSizeTime(int(this.Nanosecond), this.TimezoneType, this.ShortAreaLocation)
-	case TypeTimestamp:
-		return encodedSizeTimestamp(this.Year, int(this.Nanosecond), this.TimezoneType, this.ShortAreaLocation)
+	case TimeTypeTime:
+		return encodedSizeTime(int(this.Nanosecond), this.Timezone.Type, this.Timezone.ShortAreaLocation)
+	case TimeTypeTimestamp:
+		return encodedSizeTimestamp(this.Year, int(this.Nanosecond), this.Timezone.Type, this.Timezone.ShortAreaLocation)
 	default:
-		panic(fmt.Errorf("%v: Unknown time type", this.TimeType))
+		panic(fmt.Errorf("%v: Unknown time type", this.Type))
 	}
 }
 
@@ -66,15 +66,15 @@ func (this *Time) Encode(writer io.Writer) (bytesEncoded int, err error) {
 // Encode a time value (date, time, or timestamp) to a byte array.
 // Assumes that the buffer is big enough.
 func (this *Time) EncodeToBytes(buffer []byte) (bytesEncoded int) {
-	switch this.TimeType {
-	case TypeDate:
+	switch this.Type {
+	case TimeTypeDate:
 		return this.encodeDate(buffer)
-	case TypeTime:
+	case TimeTypeTime:
 		return this.encodeTime(buffer)
-	case TypeTimestamp:
+	case TimeTypeTimestamp:
 		return this.encodeTimestamp(buffer)
 	default:
-		panic(fmt.Errorf("%v: Unknown time type", this.TimeType))
+		panic(fmt.Errorf("%v: Unknown time type", this.Type))
 	}
 }
 
@@ -91,7 +91,7 @@ func (this *Time) encodeTime(buffer []byte) (bytesEncoded int) {
 		return encodeZeroTime(buffer)
 	}
 
-	isZeroTS := this.TimezoneType == TypeZero
+	isZeroTS := this.Timezone.Type == TimezoneTypeUTC
 	bytesEncoded = encodeTime(int(this.Hour), int(this.Minute),
 		int(this.Second), int(this.Nanosecond), isZeroTS, buffer)
 	if !isZeroTS {
@@ -105,7 +105,7 @@ func (this *Time) encodeTimestamp(buffer []byte) (bytesEncoded int) {
 		return encodeZeroTimestamp(buffer)
 	}
 
-	isZeroTS := this.TimezoneType == TypeZero
+	isZeroTS := this.Timezone.Type == TimezoneTypeUTC
 	bytesEncoded = encodeTimestamp(this.Year, int(this.Month),
 		int(this.Day), int(this.Hour), int(this.Minute), int(this.Second),
 		int(this.Nanosecond), isZeroTS, buffer)
@@ -116,15 +116,18 @@ func (this *Time) encodeTimestamp(buffer []byte) (bytesEncoded int) {
 }
 
 func (this *Time) encodeTimezone(buffer []byte) (bytesEncoded int) {
-	switch this.TimezoneType {
-	case TypeZero:
+	switch this.Timezone.Type {
+	case TimezoneTypeUTC:
 		return
-	case TypeAreaLocation, TypeLocal:
-		return encodeTimezoneAreaLoc(this.ShortAreaLocation, buffer)
-	case TypeLatitudeLongitude:
-		return encodeTimezoneLatLong(int(this.LatitudeHundredths), int(this.LongitudeHundredths), buffer)
+	case TimezoneTypeAreaLocation, TimezoneTypeLocal:
+		return encodeTimezoneAreaLoc(this.Timezone.ShortAreaLocation, buffer)
+	case TimezoneTypeLatitudeLongitude:
+		return encodeTimezoneLatLong(int(this.Timezone.LatitudeHundredths),
+			int(this.Timezone.LongitudeHundredths), buffer)
+	case TimezoneTypeUTCOffset:
+		return encodeTimezoneUTCOffset(int(this.Timezone.MinutesOffsetFromUTC), buffer)
 	default:
-		panic(fmt.Errorf("%v: Unknown timezone type", this.TimezoneType))
+		panic(fmt.Errorf("%v: Unknown timezone type", this.Timezone.Type))
 	}
 }
 
@@ -135,15 +138,13 @@ func EncodedSizeGoDate(time gotime.Time) int {
 }
 
 func EncodedSizeGoTime(time gotime.Time) int {
-	shortAreaLocation, _ := splitAreaLocation(time.Location().String())
-	tzType := getTZTypeFromShortAreaLocation(shortAreaLocation)
-	return encodedSizeTime(time.Nanosecond(), tzType, shortAreaLocation)
+	tz := TZAtAreaLocation(time.Location().String())
+	return encodedSizeTime(time.Nanosecond(), tz.Type, tz.ShortAreaLocation)
 }
 
 func EncodedSizeGoTimestamp(time gotime.Time) int {
-	shortAreaLocation, _ := splitAreaLocation(time.Location().String())
-	tzType := getTZTypeFromShortAreaLocation(shortAreaLocation)
-	return encodedSizeTimestamp(time.Year(), time.Nanosecond(), tzType, shortAreaLocation)
+	tz := TZAtAreaLocation(time.Location().String())
+	return encodedSizeTimestamp(time.Year(), time.Nanosecond(), tz.Type, tz.ShortAreaLocation)
 }
 
 func EncodeGoDate(time gotime.Time, writer io.Writer) (bytesEncoded int, err error) {
@@ -165,12 +166,11 @@ func EncodeGoTime(time gotime.Time, writer io.Writer) (bytesEncoded int, err err
 }
 
 func EncodeGoTimeToBytes(time gotime.Time, buffer []byte) (bytesEncoded int) {
-	shortAreaLocation, _ := splitAreaLocation(time.Location().String())
-	isZeroTS := shortAreaLocation == "Z"
+	tz := TZAtAreaLocation(time.Location().String())
 	bytesEncoded = encodeTime(time.Hour(), time.Minute(),
-		time.Second(), time.Nanosecond(), isZeroTS, buffer)
-	if !isZeroTS {
-		bytesEncoded += encodeTimezoneAreaLoc(shortAreaLocation, buffer[bytesEncoded:])
+		time.Second(), time.Nanosecond(), tz.Type == TimezoneTypeUTC, buffer)
+	if tz.Type != TimezoneTypeUTC {
+		bytesEncoded += encodeTimezoneAreaLoc(tz.ShortAreaLocation, buffer[bytesEncoded:])
 	}
 	return
 }
@@ -183,13 +183,12 @@ func EncodeGoTimestamp(time gotime.Time, writer io.Writer) (bytesEncoded int, er
 }
 
 func EncodeGoTimestampToBytes(time gotime.Time, buffer []byte) (bytesEncoded int) {
-	shortAreaLocation, _ := splitAreaLocation(time.Location().String())
-	isZeroTS := shortAreaLocation == "Z"
+	tz := TZAtAreaLocation(time.Location().String())
 	bytesEncoded = encodeTimestamp(time.Year(), int(time.Month()),
 		time.Day(), time.Hour(), time.Minute(), time.Second(),
-		time.Nanosecond(), isZeroTS, buffer)
-	if !isZeroTS {
-		bytesEncoded += encodeTimezoneAreaLoc(shortAreaLocation, buffer[bytesEncoded:])
+		time.Nanosecond(), tz.Type == TimezoneTypeUTC, buffer)
+	if tz.Type != TimezoneTypeUTC {
+		bytesEncoded += encodeTimezoneAreaLoc(tz.ShortAreaLocation, buffer[bytesEncoded:])
 	}
 	return
 }
@@ -219,12 +218,14 @@ func encodedSizeTimestamp(year, nanosecond int, tzType TimezoneType, shortAreaLo
 
 func encodedSizeTimezone(tzType TimezoneType, shortAreaLocation string) int {
 	switch tzType {
-	case TypeZero:
+	case TimezoneTypeUTC:
 		return 0
-	case TypeAreaLocation, TypeLocal:
+	case TimezoneTypeAreaLocation, TimezoneTypeLocal:
 		return 1 + len(shortAreaLocation)
-	case TypeLatitudeLongitude:
+	case TimezoneTypeLatitudeLongitude:
 		return byteCountLatLong
+	case TimezoneTypeUTCOffset:
+		return byteCountUTCOffset
 	default:
 		panic(fmt.Errorf("%v: Unknown timezone type", tzType))
 	}
@@ -297,15 +298,15 @@ func encodeZeroBytes(count int, buffer []byte) (bytesEncoded int) {
 }
 
 func encodeZeroDate(buffer []byte) (bytesEncoded int) {
-	return encodeZeroBytes(byteCountsZeroValue[TypeDate], buffer)
+	return encodeZeroBytes(byteCountsZeroValue[TimeTypeDate], buffer)
 }
 
 func encodeZeroTime(buffer []byte) (bytesEncoded int) {
-	return encodeZeroBytes(byteCountsZeroValue[TypeTime], buffer)
+	return encodeZeroBytes(byteCountsZeroValue[TimeTypeTime], buffer)
 }
 
 func encodeZeroTimestamp(buffer []byte) (bytesEncoded int) {
-	return encodeZeroBytes(byteCountsZeroValue[TypeTimestamp], buffer)
+	return encodeZeroBytes(byteCountsZeroValue[TimeTypeTimestamp], buffer)
 }
 
 func encodeDate(year, month, day int, buffer []byte) (bytesEncoded int) {
@@ -374,8 +375,11 @@ func encodeTimezoneAreaLoc(areaLocation string, buffer []byte) (bytesEncoded int
 }
 
 func encodeTimezoneLatLong(latitudeHundredths, longitudeHundredths int, buffer []byte) (bytesEncoded int) {
-	bytesEncoded = byteCountLatLong
 	latLong := ((longitudeHundredths & maskLongitude) << shiftLongitude) |
 		((latitudeHundredths & maskLatitude) << shiftLatitude) | maskLatLong
 	return encode32LE(uint32(latLong), buffer)
+}
+
+func encodeTimezoneUTCOffset(minutesOffsetFromUTC int, buffer []byte) (bytesEncoded int) {
+	return encodeLE(uint64(minutesOffsetFromUTC)<<8, buffer, byteCountUTCOffset)
 }

@@ -33,7 +33,6 @@ package compact_time
 import (
 	"fmt"
 	"io"
-	gotime "time"
 
 	"github.com/kstenerud/go-uleb128"
 )
@@ -52,254 +51,6 @@ func DecodeDateWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDeco
 	var month int
 	var day int
 
-	year, month, day, bytesDecoded, err = decodeDateFields(reader, buffer)
-	if err != nil {
-		return
-	}
-	if year == 2000 && month == 0 && day == 0 {
-		time = ZeroDate()
-		return
-	}
-	time, err = NewDate(year, month, day)
-	return
-}
-
-// Decode a go date.
-func DecodeGoDate(reader io.Reader) (time gotime.Time, bytesDecoded int, err error) {
-	return DecodeGoDateWithBuffer(reader, makeRequiredBuffer())
-}
-
-func DecodeGoDateWithBuffer(reader io.Reader, buffer []byte) (time gotime.Time, bytesDecoded int, err error) {
-	var year int
-	var month int
-	var day int
-
-	year, month, day, bytesDecoded, err = decodeDateFields(reader, buffer)
-	if err != nil {
-		return
-	}
-	time = gotime.Date(year, gotime.Month(month), day, 0, 0, 0, 0, gotime.UTC)
-	return
-}
-
-// Decode a time value.
-func DecodeTime(reader io.Reader) (time Time, bytesDecoded int, err error) {
-	return DecodeTimeWithBuffer(reader, makeRequiredBuffer())
-}
-
-func DecodeTimeWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
-	var hour int
-	var minute int
-	var second int
-	var nanosecond int
-	var latitudeHundredths int
-	var longitudeHundredths int
-	var areaLocation string
-	var tzType TimezoneType
-	hour, minute, second, nanosecond,
-		latitudeHundredths, longitudeHundredths,
-		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(reader, buffer)
-	if err != nil {
-		return
-	}
-
-	switch tzType {
-	case TypeZeroValue:
-		time = ZeroTime()
-	case TypeLatitudeLongitude:
-		time, err = NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	default:
-		time, err = NewTime(hour, minute, second, nanosecond, areaLocation)
-	}
-
-	return
-}
-
-// Decode a go time value.
-func DecodeGoTime(reader io.Reader) (time gotime.Time, bytesDecoded int, err error) {
-	return DecodeGoTimeWithBuffer(reader, makeRequiredBuffer())
-}
-
-func DecodeGoTimeWithBuffer(reader io.Reader, buffer []byte) (time gotime.Time, bytesDecoded int, err error) {
-	var hour int
-	var minute int
-	var second int
-	var nanosecond int
-	var areaLocation string
-	var tzType TimezoneType
-	hour, minute, second, nanosecond, _, _,
-		areaLocation, tzType, bytesDecoded, err = decodeTimeFields(reader, buffer)
-	if err != nil {
-		return
-	}
-
-	if tzType == TypeLatitudeLongitude {
-		err = fmt.Errorf("Go time doesn't support latitude/longitude")
-		return
-	} else {
-		_, longAreaLocation := splitAreaLocation(areaLocation)
-		if longAreaLocation == "Etc/UTC" {
-			longAreaLocation = "UTC"
-		}
-		var location *gotime.Location
-		location, err = gotime.LoadLocation(longAreaLocation)
-		if err != nil {
-			return
-		}
-		time = gotime.Date(0, 0, 0, hour, minute, second, nanosecond, location)
-	}
-
-	return
-}
-
-// Decode a timestamp.
-func DecodeTimestamp(reader io.Reader) (time Time, bytesDecoded int, err error) {
-	return DecodeTimestampWithBuffer(reader, makeRequiredBuffer())
-}
-
-func DecodeTimestampWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
-	var year int
-	var month int
-	var day int
-	var hour int
-	var minute int
-	var second int
-	var nanosecond int
-	var latitudeHundredths int
-	var longitudeHundredths int
-	var areaLocation string
-	var tzType TimezoneType
-
-	year, month, day, hour, minute, second, nanosecond,
-		latitudeHundredths, longitudeHundredths,
-		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(reader, buffer)
-	if err != nil {
-		return
-	}
-
-	switch tzType {
-	case TypeZeroValue:
-		time = ZeroTimestamp()
-	case TypeLatitudeLongitude:
-		time, err = NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	default:
-		time, err = NewTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation)
-	}
-	return
-}
-
-// Decode a go timestamp.
-func DecodeGoTimestamp(reader io.Reader) (time gotime.Time, bytesDecoded int, err error) {
-	return DecodeGoTimestampWithBuffer(reader, makeRequiredBuffer())
-}
-
-func DecodeGoTimestampWithBuffer(reader io.Reader, buffer []byte) (time gotime.Time, bytesDecoded int, err error) {
-	var year int
-	var month int
-	var day int
-	var hour int
-	var minute int
-	var second int
-	var nanosecond int
-	var areaLocation string
-	var tzType TimezoneType
-
-	year, month, day, hour, minute, second, nanosecond, _, _,
-		areaLocation, tzType, bytesDecoded, err = decodeTimestampFields(reader, buffer)
-	if err != nil {
-		return
-	}
-
-	if tzType == TypeLatitudeLongitude {
-		err = fmt.Errorf("Go time doesn't support latitude/longitude")
-		return
-	} else {
-		_, longAreaLocation := splitAreaLocation(areaLocation)
-		if longAreaLocation == "Etc/UTC" {
-			longAreaLocation = "UTC"
-		}
-		var location *gotime.Location
-		location, err = gotime.LoadLocation(longAreaLocation)
-		if err != nil {
-			return
-		}
-		time = gotime.Date(year, gotime.Month(month), day, hour, minute, second, nanosecond, location)
-	}
-	return
-}
-
-// =============================================================================
-
-func makeRequiredBuffer() []byte {
-	return make([]byte, RequiredBufferSize)
-}
-
-func fillSlice(reader io.Reader, dst []byte) (err error) {
-	var bytesRead int
-	for len(dst) > 0 {
-		if bytesRead, err = reader.Read(dst); err != nil {
-			return
-		}
-		dst = dst[bytesRead:]
-	}
-	return
-}
-
-func decodeLE(src []byte, byteCount int) uint64 {
-	accumulator := uint64(0)
-	for i := 0; i < byteCount; i++ {
-		accumulator |= uint64(src[i]) << (uint(i) * 8)
-	}
-	return accumulator
-}
-
-func decode16LE(src []byte) uint16 {
-	return uint16(src[0]) | (uint16(src[1]) << 8)
-}
-
-func decode32LE(src []byte) uint32 {
-	return uint32(src[0]) | (uint32(src[1]) << 8) |
-		(uint32(src[2]) << 16) | (uint32(src[3]) << 24)
-}
-
-func decodeZigzag32(value uint32) int32 {
-	return int32((value >> 1) ^ -(value & 1))
-}
-
-func decodeYear(encodedYear uint32) int {
-	return int(decodeZigzag32(uint32(encodedYear))) + yearBias
-}
-
-func decodeTimezone(reader io.Reader, buffer []byte) (latitudeHundredths int, longitudeHundredths int,
-	areaLocation string, tzType TimezoneType, bytesDecoded int, err error) {
-	if _, err = reader.Read(buffer[:1]); err != nil {
-		return
-	}
-	header := buffer[0]
-
-	if header&maskLatLong != 0 {
-		if err = fillSlice(reader, buffer[1:4]); err != nil {
-			return
-		}
-		latLong := decode32LE(buffer)
-		longitudeHundredths = int(int32(latLong) >> shiftLongitude)
-		latitudeHundredths = int((int32(latLong<<16) >> 17) & maskLatitude)
-		tzType = TypeLatitudeLongitude
-		bytesDecoded = 4
-		return
-	}
-
-	stringLength := int(header >> 1)
-	if err = fillSlice(reader, buffer[:stringLength]); err != nil {
-		return
-	}
-	areaLocation = string(buffer[:stringLength])
-	tzType = TypeAreaLocation
-	bytesDecoded = stringLength + 1
-	return
-}
-
-func decodeDateFields(reader io.Reader, buffer []byte) (year, month, day int, bytesDecoded int, err error) {
 	if err = fillSlice(reader, buffer[:2]); err != nil {
 		return
 	}
@@ -324,12 +75,26 @@ func decodeDateFields(reader io.Reader, buffer []byte) (year, month, day int, by
 		return
 	}
 	year = decodeYear(uint32(encodedYear))
+	if year == 2000 && month == 0 && day == 0 {
+		time = ZeroDate()
+		return
+	}
+
+	time = NewDate(year, month, day)
 	return
 }
 
-func decodeTimeFields(reader io.Reader, buffer []byte) (hour, minute, second, nanosecond,
-	latitudeHundredths, longitudeHundredths int,
-	areaLocation string, tzType TimezoneType, bytesDecoded int, err error) {
+// Decode a time value.
+func DecodeTime(reader io.Reader) (time Time, bytesDecoded int, err error) {
+	return DecodeTimeWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeTimeWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
+	var hour int
+	var minute int
+	var second int
+	var nanosecond int
+	var tz Timezone
 
 	if _, err = reader.Read(buffer[:1]); err != nil {
 		return
@@ -363,33 +128,39 @@ func decodeTimeFields(reader io.Reader, buffer []byte) (hour, minute, second, na
 	expectedReservedBits := reservedBitsTime[magnitude]
 	if accumulator != expectedReservedBits {
 		if accumulator == 0 {
-			tzType = TypeZeroValue
-			return
+			time = ZeroTime()
+		} else {
+			err = fmt.Errorf("Expected reserved bits %b but got %b", expectedReservedBits, accumulator)
 		}
-		err = fmt.Errorf("Expected reserved bits %b but got %b", expectedReservedBits, accumulator)
+		return
 	}
 
 	if !hasTimezone {
-		tzType = TypeZero
+		time.InitTime(hour, minute, second, nanosecond, timezoneUTC)
 		return
 	}
 
 	var byteCount int
-
-	latitudeHundredths,
-		longitudeHundredths,
-		areaLocation,
-		tzType,
-		byteCount,
-		err = decodeTimezone(reader, buffer)
-
+	tz, byteCount, err = decodeTimezone(reader, buffer)
 	bytesDecoded += byteCount
+	time.InitTime(hour, minute, second, nanosecond, tz)
 	return
 }
 
-func decodeTimestampFields(reader io.Reader, buffer []byte) (year, month, day, hour, minute, second, nanosecond,
-	latitudeHundredths, longitudeHundredths int, areaLocation string, tzType TimezoneType,
-	bytesDecoded int, err error) {
+// Decode a timestamp.
+func DecodeTimestamp(reader io.Reader) (time Time, bytesDecoded int, err error) {
+	return DecodeTimestampWithBuffer(reader, makeRequiredBuffer())
+}
+
+func DecodeTimestampWithBuffer(reader io.Reader, buffer []byte) (time Time, bytesDecoded int, err error) {
+	var year int
+	var month int
+	var day int
+	var hour int
+	var minute int
+	var second int
+	var nanosecond int
+	var tz Timezone
 
 	if _, err = reader.Read(buffer[:1]); err != nil {
 		return
@@ -442,20 +213,116 @@ func decodeTimestampFields(reader io.Reader, buffer []byte) (year, month, day, h
 
 	if !hasTimezone {
 		if year == 2000 && month == 0 && day == 0 {
-			tzType = TypeZeroValue
+			time = ZeroTimestamp()
 			return
 		}
-		tzType = TypeZero
-		return
+		tz = timezoneUTC
+		byteCount = 0
+	} else {
+		tz, byteCount, err = decodeTimezone(reader, buffer)
 	}
-	latitudeHundredths,
-		longitudeHundredths,
-		areaLocation,
-		tzType,
-		byteCount,
-		err = decodeTimezone(reader, buffer)
 
 	bytesDecoded += byteCount
+
+	time.InitTimestamp(year, month, day, hour, minute, second, nanosecond, tz)
+	return
+}
+
+// =============================================================================
+
+func makeRequiredBuffer() []byte {
+	return make([]byte, RequiredBufferSize)
+}
+
+func fillSlice(reader io.Reader, dst []byte) (err error) {
+	var bytesRead int
+	for len(dst) > 0 {
+		if bytesRead, err = reader.Read(dst); err != nil {
+			return
+		}
+		dst = dst[bytesRead:]
+	}
+	return
+}
+
+func decodeLE(src []byte, byteCount int) uint64 {
+	accumulator := uint64(0)
+	for i := 0; i < byteCount; i++ {
+		accumulator |= uint64(src[i]) << (uint(i) * 8)
+	}
+	return accumulator
+}
+
+func decode16LE(src []byte) uint16 {
+	return uint16(src[0]) | (uint16(src[1]) << 8)
+}
+
+func decode32LE(src []byte) uint32 {
+	return uint32(src[0]) | (uint32(src[1]) << 8) |
+		(uint32(src[2]) << 16) | (uint32(src[3]) << 24)
+}
+
+func decodeZigzag32(value uint32) int32 {
+	return int32((value >> 1) ^ -(value & 1))
+}
+
+func decodeYear(encodedYear uint32) int {
+	return int(decodeZigzag32(uint32(encodedYear))) + yearBias
+}
+
+func decodeTimezone(reader io.Reader, buffer []byte) (tz Timezone, bytesDecoded int, err error) {
+	if _, err = reader.Read(buffer[:1]); err != nil {
+		return
+	}
+	header := buffer[0]
+
+	if header&maskLatLong != 0 {
+		if err = fillSlice(reader, buffer[1:4]); err != nil {
+			return
+		}
+		latLong := decode32LE(buffer)
+		bytesDecoded = 4
+		longitudeHundredths := int(int32(latLong) >> shiftLongitude)
+		latitudeHundredths := int((int32(latLong<<16) >> 17) & maskLatitude)
+		tz.InitWithLatLong(latitudeHundredths, longitudeHundredths)
+		return
+	}
+
+	stringLength := int(header >> 1)
+	if stringLength == 0 {
+		if err = fillSlice(reader, buffer[0:2]); err != nil {
+			return
+		}
+		bytesDecoded = 3
+		minutesRaw := decode16LE(buffer)
+		const maskNegative = 0xf000
+		const maskPositive = 0x0fff
+		var minutes int16
+		if minutesRaw&0x800 != 0 {
+			minutes = int16(minutesRaw | maskNegative)
+		} else {
+			minutes = int16(minutesRaw & maskPositive)
+		}
+		tz.InitWithMinutesOffsetFromUTC(int(minutes))
+		return
+	}
+
+	if err = fillSlice(reader, buffer[:stringLength]); err != nil {
+		return
+	}
+	bytesDecoded = stringLength + 1
+	if stringLength == 1 {
+		// Avoid a string allocation where possible
+		switch buffer[0] {
+		case 'L':
+			tz = TZLocal()
+			return
+		case 'Z':
+			tz = TZAtUTC()
+			return
+		}
+	}
+	tz.InitWithAreaLocation(string(buffer[:stringLength]))
 	return
 }
 

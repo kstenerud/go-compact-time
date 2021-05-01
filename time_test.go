@@ -21,117 +21,80 @@
 package compact_time
 
 import (
-	"fmt"
 	"testing"
 )
 
-func newDate(year, month, day int) Time {
-	v, err := NewDate(year, month, day)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	return v
-}
-
-func newTime(hour, minute, second, nanosecond int, areaLocation string) Time {
-	v, err := NewTime(hour, minute, second, nanosecond, areaLocation)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	return v
-}
-
-func newTimeLL(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) Time {
-	v, err := NewTimeLatLong(hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	return v
-}
-
-func newTimestamp(year, month, day, hour, minute, second, nanosecond int, areaLocation string) Time {
-	v, err := NewTimestamp(year, month, day, hour, minute, second, nanosecond, areaLocation)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	return v
-}
-
-func newTimestampLL(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths int) Time {
-	v, err := NewTimestampLatLong(year, month, day, hour, minute, second, nanosecond, latitudeHundredths, longitudeHundredths)
-	if err != nil {
-		panic(fmt.Errorf("BUG: Unexpected error %v", err))
-	}
-	return v
-}
-
 func assertEquivalentTime(t *testing.T, a, b Time) {
-	if !a.IsEquivalentTo(&b) {
+	if !a.IsEquivalentTo(b) {
 		t.Errorf("Expected %v to be equivalent to %v", a, b)
 	}
 }
 
 func assertNotEquivalentTime(t *testing.T, a, b Time) {
-	if a.IsEquivalentTo(&b) {
+	if a.IsEquivalentTo(b) {
 		t.Errorf("Expected %v to not be equivalent to %v", a, b)
 	}
 }
 
 func TestEquivalence(t *testing.T) {
-	assertEquivalentTime(t, newDate(2100, 1, 1), newDate(2100, 1, 1))
-	assertNotEquivalentTime(t, newDate(2100, 1, 2), newDate(2100, 1, 1))
-	assertNotEquivalentTime(t, newDate(2100, 6, 1), newDate(2100, 1, 1))
-	assertNotEquivalentTime(t, newDate(2101, 1, 1), newDate(2100, 1, 1))
+	assertEquivalentTime(t, NewDate(2100, 1, 1), NewDate(2100, 1, 1))
+	assertNotEquivalentTime(t, NewDate(2100, 1, 2), NewDate(2100, 1, 1))
+	assertNotEquivalentTime(t, NewDate(2100, 6, 1), NewDate(2100, 1, 1))
+	assertNotEquivalentTime(t, NewDate(2101, 1, 1), NewDate(2100, 1, 1))
 
-	assertEquivalentTime(t, newTime(12, 1, 4, 91, ""), newTime(12, 1, 4, 91, ""))
-	assertEquivalentTime(t, newTime(12, 1, 4, 91, ""), newTime(12, 1, 4, 91, "UTC"))
-	assertEquivalentTime(t, newTime(12, 1, 4, 91, "Etc/UTC"), newTime(12, 1, 4, 91, "UTC"))
-	assertEquivalentTime(t, newTime(12, 1, 4, 91, "Etc/UTC"), newTime(12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTime(12, 1, 4, 9, ""), newTime(12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTime(12, 1, 14, 91, ""), newTime(12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTime(12, 12, 4, 91, ""), newTime(12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTime(1, 1, 4, 91, ""), newTime(12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTime(12, 1, 4, 91, "L"), newTime(12, 1, 4, 91, ""))
+	assertEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtUTC()), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtUTC()), NewTime(12, 1, 4, 91, TZAtAreaLocation("UTC")))
+	assertEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtAreaLocation("Etc/UTC")), NewTime(12, 1, 4, 91, TZAtAreaLocation("UTC")))
+	assertEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtAreaLocation("Etc/UTC")), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertEquivalentTime(t, NewTime(12, 1, 4, 91, TZWithMiutesOffsetFromUTC(1)), NewTime(12, 1, 4, 91, TZWithMiutesOffsetFromUTC(1)))
+	assertNotEquivalentTime(t, NewTime(12, 1, 4, 9, TZAtUTC()), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(12, 1, 14, 91, TZAtUTC()), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(12, 12, 4, 91, TZAtUTC()), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(1, 1, 4, 91, TZAtUTC()), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(12, 1, 4, 91, TZLocal()), NewTime(12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(12, 1, 4, 91, TZWithMiutesOffsetFromUTC(1)), NewTime(12, 1, 4, 91, TZWithMiutesOffsetFromUTC(0)))
 
-	assertEquivalentTime(t, newTimeLL(12, 1, 4, 91, 0, 0), newTimeLL(12, 1, 4, 91, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(12, 1, 4, 91, 0, 1), newTimeLL(12, 1, 4, 91, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(12, 1, 4, 91, 1, 0), newTimeLL(12, 1, 4, 91, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(12, 1, 4, 910, 0, 0), newTimeLL(12, 1, 4, 91, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(12, 1, 14, 91, 0, 0), newTimeLL(12, 1, 4, 91, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(12, 11, 4, 91, 0, 0), newTimeLL(12, 1, 4, 91, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(11, 1, 4, 91, 0, 0), newTimeLL(12, 1, 4, 91, 0, 0))
+	assertEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtLatLong(0, 1)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 1, 4, 91, TZAtLatLong(1, 0)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 1, 4, 910, TZAtLatLong(0, 0)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 1, 14, 91, TZAtLatLong(0, 0)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 11, 4, 91, TZAtLatLong(0, 0)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(11, 1, 4, 91, TZAtLatLong(0, 0)), NewTime(12, 1, 4, 91, TZAtLatLong(0, 0)))
 
-	assertEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 1, 4, 91, "Z"), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 1, 4, 91, "Etc/GMT"), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 1, 4, 91, "America/Los_Angeles"), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 1, 4, 9, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 1, 1, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 8, 5, 12, 2, 4, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 8, 5, 1, 1, 4, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 8, 4, 12, 1, 4, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2050, 3, 5, 12, 1, 4, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
-	assertNotEquivalentTime(t, newTimestamp(2051, 8, 5, 12, 1, 4, 91, ""), newTimestamp(2050, 8, 5, 12, 1, 4, 91, ""))
+	assertEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtAreaLocation("Z")), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtAreaLocation("Etc/GMT")), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZWithMiutesOffsetFromUTC(-100)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZWithMiutesOffsetFromUTC(-100)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtAreaLocation("America/Los_Angeles")), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 9, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 1, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 2, 4, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 1, 1, 4, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 4, 12, 1, 4, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 3, 5, 12, 1, 4, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2051, 8, 5, 12, 1, 4, 91, TZAtUTC()), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZWithMiutesOffsetFromUTC(-300)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZWithMiutesOffsetFromUTC(300)))
 
-	assertEquivalentTime(t, newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 2), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 2, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 5, 12, 1, 4, 92, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 5, 12, 1, 2, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 5, 12, 2, 4, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 5, 2, 1, 4, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 8, 2, 12, 1, 4, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2050, 2, 5, 12, 1, 4, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
-	assertNotEquivalentTime(t, newTimestampLL(2052, 8, 5, 12, 1, 4, 91, 1, 1), newTimestampLL(2050, 8, 5, 12, 1, 4, 91, 1, 1))
+	assertEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 2)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(2, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 4, 92, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 1, 2, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 12, 2, 4, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 5, 2, 1, 4, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 8, 2, 12, 1, 4, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2050, 2, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewTimestamp(2052, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)), NewTimestamp(2050, 8, 5, 12, 1, 4, 91, TZAtLatLong(1, 1)))
 
-	assertNotEquivalentTime(t, newDate(2100, 1, 2), newTime(12, 4, 1, 0, ""))
-	assertNotEquivalentTime(t, newDate(2100, 1, 2), newTimeLL(12, 5, 1, 0, 1, 1))
-	assertNotEquivalentTime(t, newDate(2100, 1, 2), newTimestamp(2100, 1, 2, 0, 0, 0, 0, ""))
-	assertNotEquivalentTime(t, newDate(2100, 1, 2), newTimestampLL(2100, 1, 2, 0, 0, 0, 0, 0, 0))
-	assertNotEquivalentTime(t, newTime(12, 4, 1, 0, ""), newTimeLL(12, 4, 1, 0, 0, 0))
-	assertNotEquivalentTime(t, newTime(12, 4, 1, 0, ""), newTimestamp(2100, 1, 2, 0, 0, 0, 0, ""))
-	assertNotEquivalentTime(t, newTime(12, 4, 1, 0, ""), newTimestampLL(2100, 1, 2, 0, 0, 0, 0, 0, 0))
-	assertNotEquivalentTime(t, newTimeLL(12, 5, 1, 0, 1, 1), newTimestamp(2100, 1, 2, 0, 0, 0, 0, ""))
-	assertNotEquivalentTime(t, newTimeLL(12, 5, 1, 0, 1, 1), newTimestampLL(2100, 1, 2, 0, 0, 0, 0, 0, 0))
-	assertNotEquivalentTime(t, newTimestamp(2100, 1, 2, 0, 0, 0, 0, ""), newTimestampLL(2100, 1, 2, 0, 0, 0, 0, 0, 0))
+	assertNotEquivalentTime(t, NewDate(2100, 1, 2), NewTime(12, 4, 1, 0, TZAtUTC()))
+	assertNotEquivalentTime(t, NewDate(2100, 1, 2), NewTime(12, 5, 1, 0, TZAtLatLong(1, 1)))
+	assertNotEquivalentTime(t, NewDate(2100, 1, 2), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtUTC()))
+	assertNotEquivalentTime(t, NewDate(2100, 1, 2), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 4, 1, 0, TZAtUTC()), NewTime(12, 4, 1, 0, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 4, 1, 0, TZAtUTC()), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(12, 4, 1, 0, TZAtUTC()), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTime(12, 5, 1, 0, TZAtLatLong(1, 1)), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtUTC()))
+	assertNotEquivalentTime(t, NewTime(12, 5, 1, 0, TZAtLatLong(1, 1)), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtLatLong(0, 0)))
+	assertNotEquivalentTime(t, NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtUTC()), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtLatLong(0, 0)))
 }

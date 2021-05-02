@@ -139,7 +139,7 @@ func (this *Timezone) Validate() error {
 			return fmt.Errorf("%v: Invalid latitude (must be %v to %v)", this.LatitudeHundredths, latitudeMin, latitudeMax)
 		}
 	case TimezoneTypeUTCOffset:
-		if this.MinutesOffsetFromUTC < minutesFromUTCMin || this.MinutesOffsetFromUTC >= minutesFromUTCMax {
+		if this.MinutesOffsetFromUTC < minutesFromUTCMin || this.MinutesOffsetFromUTC > minutesFromUTCMax {
 			return fmt.Errorf("%v: Invalid UTC offset", this.MinutesOffsetFromUTC)
 		}
 	}
@@ -346,6 +346,9 @@ func (this *Time) pString() string {
 
 func (this *Time) Validate() error {
 	if this.Type == TimeTypeDate || this.Type == TimeTypeTimestamp {
+		if this.Year == 0 {
+			return fmt.Errorf("Year cannot be 0")
+		}
 		if this.Month < monthMin || this.Month > monthMax {
 			return fmt.Errorf("%v: Invalid month (must be %v to %v)", this.Month, monthMin, monthMax)
 		}

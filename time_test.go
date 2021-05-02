@@ -36,6 +36,18 @@ func assertNotEquivalentTime(t *testing.T, a, b Time) {
 	}
 }
 
+func assertValid(t *testing.T, a Time) {
+	if err := a.Validate(); err != nil {
+		t.Errorf("Expected %v to be valid but got error %v", a, err)
+	}
+}
+
+func assertInvalid(t *testing.T, a Time) {
+	if a.Validate() == nil {
+		t.Errorf("Expected %v to be invalid", a)
+	}
+}
+
 func TestEquivalence(t *testing.T) {
 	assertEquivalentTime(t, NewDate(2100, 1, 1), NewDate(2100, 1, 1))
 	assertNotEquivalentTime(t, NewDate(2100, 1, 2), NewDate(2100, 1, 1))
@@ -97,4 +109,52 @@ func TestEquivalence(t *testing.T) {
 	assertNotEquivalentTime(t, NewTime(12, 5, 1, 0, TZAtLatLong(1, 1)), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtUTC()))
 	assertNotEquivalentTime(t, NewTime(12, 5, 1, 0, TZAtLatLong(1, 1)), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtLatLong(0, 0)))
 	assertNotEquivalentTime(t, NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtUTC()), NewTimestamp(2100, 1, 2, 0, 0, 0, 0, TZAtLatLong(0, 0)))
+
+	assertValid(t, NewDate(1, 1, 1))
+	assertInvalid(t, NewDate(0, 1, 1))
+	assertInvalid(t, NewDate(0, 0, 0))
+	assertInvalid(t, NewDate(0, 0, 1))
+	assertInvalid(t, NewDate(0, 1, 0))
+	assertInvalid(t, NewDate(0, 1, 32))
+	assertInvalid(t, NewDate(0, 13, 1))
+
+	assertValid(t, NewTime(0, 0, 0, 0, TZAtUTC()))
+	assertValid(t, NewTime(0, 0, 0, 999999999, TZAtUTC()))
+	assertValid(t, NewTime(0, 0, 59, 0, TZAtUTC()))
+	assertValid(t, NewTime(0, 0, 60, 0, TZAtUTC()))
+	assertValid(t, NewTime(0, 59, 0, 0, TZAtUTC()))
+	assertValid(t, NewTime(23, 0, 0, 0, TZAtUTC()))
+	assertInvalid(t, NewTime(24, 0, 0, 0, TZAtUTC()))
+	assertInvalid(t, NewTime(0, 60, 0, 0, TZAtUTC()))
+	assertInvalid(t, NewTime(0, 0, 61, 0, TZAtUTC()))
+	assertInvalid(t, NewTime(0, 0, 0, 1000000000, TZAtUTC()))
+
+	assertValid(t, NewTime(0, 0, 0, 0, TZAtLatLong(0, 0)))
+	assertInvalid(t, NewTime(0, 0, 0, 0, TZAtLatLong(18001, 0)))
+	assertInvalid(t, NewTime(0, 0, 0, 0, TZAtLatLong(0, 18001)))
+
+	assertValid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(0)))
+	assertValid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1)))
+	assertValid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1)))
+	assertValid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1439)))
+	assertValid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1439)))
+	assertInvalid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1440)))
+	assertInvalid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1440)))
+
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZAtUTC()))
+	assertInvalid(t, NewTimestamp(0, 1, 1, 0, 0, 0, 0, TZAtUTC()))
+	assertInvalid(t, NewTimestamp(1, 0, 1, 0, 0, 0, 0, TZAtUTC()))
+	assertInvalid(t, NewTimestamp(1, 1, 0, 0, 0, 0, 0, TZAtUTC()))
+
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZAtLatLong(0, 0)))
+	assertInvalid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZAtLatLong(18001, 0)))
+	assertInvalid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZAtLatLong(0, 18001)))
+
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(0)))
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1)))
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1)))
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1439)))
+	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1439)))
+	assertInvalid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1440)))
+	assertInvalid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1440)))
 }

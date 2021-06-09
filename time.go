@@ -128,8 +128,12 @@ func (this *Timezone) InitWithMinutesOffsetFromUTC(minutesOffsetFromUTC int) {
 func (this *Timezone) Validate() error {
 	switch this.Type {
 	case TimezoneTypeAreaLocation:
-		if len(this.LongAreaLocation) == 0 {
+		length := len(this.LongAreaLocation)
+		if length == 0 {
 			return fmt.Errorf("Time zone is specified as area/location, but the AreaLocation field is empty")
+		}
+		if length > 127 {
+			return fmt.Errorf("Area/location time zones cannot be over 127 bytes long")
 		}
 	case TimezoneTypeLatitudeLongitude:
 		if this.LongitudeHundredths < longitudeMin || this.LongitudeHundredths > longitudeMax {

@@ -141,6 +141,16 @@ func TestEquivalence(t *testing.T) {
 	assertInvalid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(1440)))
 	assertInvalid(t, NewTime(0, 0, 0, 0, TZWithMiutesOffsetFromUTC(-1440)))
 
+	assertValid(t, NewTime(0, 0, 0, 0, TZAtAreaLocation("a")))
+	assertValid(t, NewTime(0, 0, 0, 0, TZAtAreaLocation(
+		"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+
+			"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+
+			"abcdefghij"+"abcdefghij"+"abcdefg")))
+	assertInvalid(t, NewTime(0, 0, 0, 0, TZAtAreaLocation(
+		"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+
+			"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+"abcdefghij"+
+			"abcdefghij"+"abcdefghij"+"abcdefgh")))
+
 	assertValid(t, NewTimestamp(1, 1, 1, 0, 0, 0, 0, TZAtUTC()))
 	assertInvalid(t, NewTimestamp(0, 1, 1, 0, 0, 0, 0, TZAtUTC()))
 	assertInvalid(t, NewTimestamp(1, 0, 1, 0, 0, 0, 0, TZAtUTC()))

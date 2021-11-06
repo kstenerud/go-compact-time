@@ -283,7 +283,7 @@ func decodeTimezone(reader io.Reader, buffer []byte) (tz Timezone, bytesDecoded 
 		latLong := decode32LE(buffer)
 		bytesDecoded = 4
 		longitudeHundredths := int(int32(latLong) >> shiftLongitude)
-		latitudeHundredths := int((int32(latLong<<16) >> 17) & maskLatitude)
+		latitudeHundredths := int(int32(latLong<<16) >> 17)
 		tz.InitWithLatLong(latitudeHundredths, longitudeHundredths)
 		return
 	}

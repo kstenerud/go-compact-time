@@ -162,6 +162,7 @@ func TestTime(t *testing.T) {
 	assertEncodeDecode(t, NewTime(10, 10, 10, 0, TZAtAreaLocation("Asia/Tokyo")), true, []byte{0x51, 0x14, 0xf5, 0x0e, 'S', '/', 'T', 'o', 'k', 'y', 'o'})
 	assertEncodeDecode(t, NewTime(8, 41, 05, 999999999, TZWithMiutesOffsetFromUTC(1000)), true, []byte{0xff, 0x4f, 0xd6, 0xdc, 0x8b, 0x14, 0xfd, 0x00, 0xe8, 0x03})
 	assertEncodeDecode(t, NewTime(8, 41, 05, 999999999, TZWithMiutesOffsetFromUTC(-500)), true, []byte{0xff, 0x4f, 0xd6, 0xdc, 0x8b, 0x14, 0xfd, 0x00, 0x0c, 0xfe})
+	assertEncodeDecode(t, NewTime(10, 10, 10, 0, TZAtLatLong(-1354, -17236)), true, []byte{0x51, 0x14, 0xf5, 0x6d, 0xf5, 0xac, 0xbc})
 }
 
 func TestTimestamp(t *testing.T) {
